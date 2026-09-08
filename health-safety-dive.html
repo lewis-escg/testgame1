@@ -7,8 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; background: #7ec8e3; height: 100%; }
-    #game-canvas { display: block; width: 100vw; height: 100vh; background: #7ec8e3; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #07090d; height: 100%; }
+    #game-canvas { display: block; width: 100vw; height: 100vh; background: #07090d; }
     .ui-panel { pointer-events: auto; }
     .dialogue-box { max-width: 420px; }
     .inventory-slot { min-width: 64px; min-height: 64px; }
@@ -19,53 +19,54 @@
 
   <div id="ui-root" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4">
     <div class="flex justify-between items-start">
-      <div class="ui-panel bg-slate-900/80 text-white rounded-xl px-4 py-2 shadow-lg border border-slate-600">
-        <div class="text-xs text-cyan-300 uppercase tracking-wider">Health &amp; Safety Dive</div>
+      <div class="ui-panel bg-black/80 text-stone-200 px-4 py-2 border border-stone-700">
+        <div class="text-xs text-stone-400 uppercase tracking-widest">Health &amp; Safety Dive</div>
         <div class="text-sm mt-1">Depth: <span id="depth-display">0 m</span> · Oxygen: <span id="oxygen-display">100%</span></div>
-        <div class="text-xs text-slate-400 mt-1">WASD move · Mouse aim · LMB shoot harpoon · RMB reel · E interact</div>
+        <div class="text-xs text-stone-500 mt-1">A/D walk · Space jump · E door / dive / surface · LMB harpoon · RMB reel</div>
+        <div id="bell-status" class="text-xs text-amber-600 mt-1">Bell: docked · door open</div>
       </div>
-      <div class="ui-panel bg-slate-900/80 text-white rounded-xl px-4 py-2 shadow-lg border border-slate-600">
-        <div class="text-xs text-amber-300">Cage Inventory</div>
+      <div class="ui-panel bg-black/80 text-stone-200 px-4 py-2 border border-stone-700">
+        <div class="text-xs text-amber-700 uppercase tracking-widest">Cage Inventory</div>
         <div id="cage-inventory" class="flex gap-2 mt-2"></div>
       </div>
     </div>
     <div class="flex justify-center">
-      <div id="dialogue-panel" class="ui-panel dialogue-box hidden bg-slate-900/95 text-white rounded-2xl p-5 shadow-2xl border border-cyan-700/50">
-        <div id="dialogue-speaker" class="text-cyan-300 font-semibold mb-1"></div>
+      <div id="dialogue-panel" class="ui-panel dialogue-box hidden bg-black/90 text-stone-200 p-5 border border-stone-700">
+        <div id="dialogue-speaker" class="text-amber-600 font-semibold mb-1"></div>
         <div id="dialogue-text" class="text-sm leading-relaxed"></div>
         <div id="dialogue-choices" class="mt-3 flex flex-wrap gap-2"></div>
       </div>
     </div>
   </div>
 
-  <div id="prep-modal" class="absolute inset-0 hidden items-center justify-center bg-black/60 pointer-events-auto">
-    <div class="bg-slate-900 text-white rounded-2xl p-6 w-full max-w-md border border-amber-600/40 shadow-2xl">
-      <h2 class="text-xl font-bold text-amber-300 mb-2">Prepare Fish</h2>
-      <p id="prep-desc" class="text-sm text-slate-300 mb-4"></p>
+  <div id="prep-modal" class="absolute inset-0 hidden items-center justify-center bg-black/70 pointer-events-auto">
+    <div class="bg-zinc-950 text-stone-200 p-6 w-full max-w-md border border-stone-700">
+      <h2 class="text-xl font-bold text-amber-700 mb-2">Prepare Fish</h2>
+      <p id="prep-desc" class="text-sm text-stone-400 mb-4"></p>
       <div class="space-y-2 mb-4">
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-clean" class="rounded" />
+          <input type="checkbox" id="prep-clean" />
           <span>Clean thoroughly (remove guts / scales)</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-cook" class="rounded" />
+          <input type="checkbox" id="prep-cook" />
           <span>Cook properly</span>
         </label>
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-identify" class="rounded" />
+          <input type="checkbox" id="prep-identify" />
           <span>Confirm species is edible for humans</span>
         </label>
       </div>
       <div class="flex gap-3">
-        <button id="prep-confirm" class="flex-1 bg-cyan-600 hover:bg-cyan-500 rounded-lg py-2 font-medium">Feed to Chef</button>
-        <button id="prep-cancel" class="px-4 bg-slate-700 hover:bg-slate-600 rounded-lg py-2">Cancel</button>
+        <button id="prep-confirm" class="flex-1 bg-stone-800 hover:bg-stone-700 border border-stone-600 py-2">Feed to Chef</button>
+        <button id="prep-cancel" class="px-4 bg-black hover:bg-zinc-900 border border-stone-700 py-2">Cancel</button>
       </div>
       <p id="prep-result" class="mt-3 text-sm hidden"></p>
     </div>
   </div>
 
   <script>
-    const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
+    const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events, Query, Vector } = Matter;
 
     function shadeHex(hex, amount) {
       const raw = String(hex || "#888888").replace("#", "");
@@ -80,29 +81,48 @@
     const CONFIG = {
       width: window.innerWidth,
       height: window.innerHeight,
-      islandY: 220,
-      playerScale: 0.55,
-      harpoonSpeed: 18,
-      reelForce: 0.008,
-      oxygenDrainPerSec: 4,
+      islandY: 240,
+      playerScale: 0.58,
+      walkSpeed: 2.15,
+      jumpSpeed: 7.2,
+      harpoonSpeed: 16,
+      reelForce: 0.007,
+      oxygenDrainPerSec: 3.2,
+      maxDepth: 1700,
+      descendSpeed: 1.35,
+      ascendSpeed: 1.7,
       fishTypes: {
-        safe_cod: { name: "Atlantic Cod", color: "#5b8def", segments: 6, length: 70, speed: 1.4, aggression: 0.1, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "low" },
-        toxic_puffer: { name: "Pufferfish", color: "#f0c040", segments: 5, length: 55, speed: 1.1, aggression: 0.6, edible: false, prepRequired: ["clean", "cook", "identify"], risk: "high" },
-        passive_sole: { name: "Dover Sole", color: "#c9a66b", segments: 7, length: 60, speed: 0.9, aggression: 0.0, edible: true, prepRequired: ["clean", "cook"], risk: "low" },
-        aggressive_barracuda: { name: "Barracuda", color: "#4a7c59", segments: 8, length: 95, speed: 2.2, aggression: 0.85, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "medium" }
+        safe_cod: { name: "Atlantic Cod", color: "#24364f", segments: 6, length: 74, speed: 1.2, aggression: 0.1, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "low" },
+        toxic_puffer: { name: "Pufferfish", color: "#6a5414", segments: 5, length: 52, speed: 1.0, aggression: 0.55, edible: false, prepRequired: ["clean", "cook", "identify"], risk: "high" },
+        passive_sole: { name: "Dover Sole", color: "#4a3b2c", segments: 7, length: 62, speed: 0.8, aggression: 0.0, edible: true, prepRequired: ["clean", "cook"], risk: "low" },
+        aggressive_barracuda: { name: "Barracuda", color: "#24362c", segments: 8, length: 96, speed: 1.8, aggression: 0.85, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "medium" }
       }
     };
 
     let engine, world, render;
     let player = null;
     let camera = { x: 0, y: 0 };
-    let isDiving = false;
     let oxygen = 100;
     let harpoon = null;
     let harpoonConstraint = null;
     let reelActive = false;
     let cageInventory = [];
     let selectedFishForPrep = null;
+    let grounded = false;
+    let jumpLocked = false;
+
+    const bell = {
+      parts: [],
+      walls: [],
+      floor: null,
+      roof: null,
+      doors: [],
+      park: { x: 0, y: 0 },
+      doorOpen: true,
+      mode: "docked", // docked | descending | holding | ascending
+      innerW: 92,
+      innerH: 118
+    };
 
     const EntityRegistry = {
       entities: [],
@@ -126,37 +146,40 @@
     function createHumanoid(x, y, scale, options) {
       options = options || {};
       const group = Body.nextGroup(true);
-      const head = Bodies.circle(x, y - 45 * scale, 14 * scale, {
+      const skin = options.skin || "#8a6d52";
+      const shirt = options.shirt || "#1a2228";
+      const pants = options.pants || "#10141a";
+      const head = Bodies.rectangle(x, y - 42 * scale, 20 * scale, 22 * scale, {
         label: "head", collisionFilter: { group },
-        render: { fillStyle: options.skin || "#f5c6a0" }, density: 0.001
+        render: { fillStyle: skin }, density: 0.002, frictionAir: 0.05, chamfer: { radius: 1 }
       });
-      const torso = Bodies.rectangle(x, y, 22 * scale, 38 * scale, {
-        label: "torso", collisionFilter: { group }, chamfer: { radius: 6 * scale },
-        render: { fillStyle: options.shirt || "#2b6cb0" }, density: 0.002
+      const torso = Bodies.rectangle(x, y, 20 * scale, 34 * scale, {
+        label: "torso", collisionFilter: { group },
+        render: { fillStyle: shirt }, density: 0.0032, frictionAir: 0.05, friction: 0.25
       });
-      const leftArm = Bodies.rectangle(x - 20 * scale, y - 5 * scale, 10 * scale, 28 * scale, {
-        label: "leftArm", collisionFilter: { group }, chamfer: { radius: 4 },
-        render: { fillStyle: options.skin || "#f5c6a0" }, density: 0.0008
+      const leftArm = Bodies.rectangle(x - 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, {
+        label: "leftArm", collisionFilter: { group },
+        render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05
       });
-      const rightArm = Bodies.rectangle(x + 20 * scale, y - 5 * scale, 10 * scale, 28 * scale, {
-        label: "rightArm", collisionFilter: { group }, chamfer: { radius: 4 },
-        render: { fillStyle: options.skin || "#f5c6a0" }, density: 0.0008
+      const rightArm = Bodies.rectangle(x + 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, {
+        label: "rightArm", collisionFilter: { group },
+        render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05
       });
-      const leftLeg = Bodies.rectangle(x - 8 * scale, y + 35 * scale, 11 * scale, 32 * scale, {
-        label: "leftLeg", collisionFilter: { group }, chamfer: { radius: 4 },
-        render: { fillStyle: options.pants || "#1a365d" }, density: 0.0012
+      const leftLeg = Bodies.rectangle(x - 7 * scale, y + 32 * scale, 9 * scale, 28 * scale, {
+        label: "leftLeg", collisionFilter: { group },
+        render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4
       });
-      const rightLeg = Bodies.rectangle(x + 8 * scale, y + 35 * scale, 11 * scale, 32 * scale, {
-        label: "rightLeg", collisionFilter: { group }, chamfer: { radius: 4 },
-        render: { fillStyle: options.pants || "#1a365d" }, density: 0.0012
+      const rightLeg = Bodies.rectangle(x + 7 * scale, y + 32 * scale, 9 * scale, 28 * scale, {
+        label: "rightLeg", collisionFilter: { group },
+        render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4
       });
 
       const constraints = [
-        Constraint.create({ bodyA: head, bodyB: torso, pointA: { x: 0, y: 14 * scale }, pointB: { x: 0, y: -19 * scale }, stiffness: 0.9, length: 2 }),
-        Constraint.create({ bodyA: torso, bodyB: leftArm, pointA: { x: -11 * scale, y: -12 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.6, length: 4 }),
-        Constraint.create({ bodyA: torso, bodyB: rightArm, pointA: { x: 11 * scale, y: -12 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.6, length: 4 }),
-        Constraint.create({ bodyA: torso, bodyB: leftLeg, pointA: { x: -6 * scale, y: 19 * scale }, pointB: { x: 0, y: -14 * scale }, stiffness: 0.7, length: 3 }),
-        Constraint.create({ bodyA: torso, bodyB: rightLeg, pointA: { x: 6 * scale, y: 19 * scale }, pointB: { x: 0, y: -14 * scale }, stiffness: 0.7, length: 3 })
+        Constraint.create({ bodyA: head, bodyB: torso, pointA: { x: 0, y: 11 * scale }, pointB: { x: 0, y: -17 * scale }, stiffness: 0.95, length: 2 }),
+        Constraint.create({ bodyA: torso, bodyB: leftArm, pointA: { x: -10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3 }),
+        Constraint.create({ bodyA: torso, bodyB: rightArm, pointA: { x: 10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3 }),
+        Constraint.create({ bodyA: torso, bodyB: leftLeg, pointA: { x: -6 * scale, y: 17 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2 }),
+        Constraint.create({ bodyA: torso, bodyB: rightLeg, pointA: { x: 6 * scale, y: 17 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2 })
       ];
 
       const composite = Composite.create({
@@ -168,7 +191,6 @@
         composite, head, torso, leftArm, rightArm, leftLeg, rightLeg, scale,
         isPlayer: !!options.isPlayer,
         name: options.name || "Humanoid",
-        applyForceToTorso(fx, fy) { Body.applyForce(torso, torso.position, { x: fx, y: fy }); },
         getHeadPos() { return head.position; },
         setPosition(nx, ny) {
           Composite.translate(composite, { x: nx - torso.position.x, y: ny - torso.position.y });
@@ -182,21 +204,20 @@
       const segs = [];
       const constraints = [];
       const segW = def.length / def.segments;
-      const segH = 12 + (def.segments > 6 ? 4 : 0);
+      const segH = 11;
 
       for (let i = 0; i < def.segments; i++) {
         const isHead = i === 0;
         const body = Bodies.rectangle(
-          x + i * segW * 0.85, y,
-          isHead ? segW * 1.1 : segW,
-          isHead ? segH * 1.15 : segH,
+          x + i * segW * 0.86, y,
+          isHead ? segW * 1.05 : segW,
+          isHead ? segH + 3 : segH,
           {
             label: isHead ? "fishHead" : "fishBody",
             collisionFilter: { group },
-            chamfer: { radius: isHead ? 8 : 5 },
-            render: { fillStyle: isHead ? shadeHex(def.color, -30) : def.color },
+            render: { fillStyle: isHead ? shadeHex(def.color, -25) : def.color },
             density: 0.0006,
-            frictionAir: 0.04
+            frictionAir: 0.045
           }
         );
         segs.push(body);
@@ -204,71 +225,142 @@
           constraints.push(Constraint.create({
             bodyA: segs[i - 1], bodyB: body,
             pointA: { x: segW * 0.4, y: 0 }, pointB: { x: -segW * 0.4, y: 0 },
-            stiffness: 0.85, damping: 0.1, length: 2
+            stiffness: 0.88, damping: 0.12, length: 2
           }));
         }
       }
 
-      const tail = Bodies.polygon(x + def.segments * segW * 0.85, y, 3, 10, {
+      const tail = Bodies.rectangle(x + def.segments * segW * 0.86, y, 10, 16, {
         label: "fishTail", collisionFilter: { group },
-        render: { fillStyle: shadeHex(def.color, -40) }, density: 0.0003
+        render: { fillStyle: shadeHex(def.color, -35) }, density: 0.0003
       });
-      constraints.push(Constraint.create({ bodyA: segs[segs.length - 1], bodyB: tail, stiffness: 0.6, length: 6 }));
+      constraints.push(Constraint.create({ bodyA: segs[segs.length - 1], bodyB: tail, stiffness: 0.55, length: 6 }));
       segs.push(tail);
 
-      const composite = Composite.create({ bodies: segs, constraints });
-
       return {
-        composite, head: segs[0], segments: segs, typeKey, def,
+        composite: Composite.create({ bodies: segs, constraints }),
+        head: segs[0], segments: segs, typeKey, def,
         alive: true, targetDir: Math.random() * Math.PI * 2,
         aggression: def.aggression, speed: def.speed,
         update() {
           if (!this.alive) return;
-          if (Math.random() < 0.02) this.targetDir += (Math.random() - 0.5) * 1.2;
+          if (Math.random() < 0.02) this.targetDir += (Math.random() - 0.5) * 1.1;
           if (player) {
             const dx = player.torso.position.x - this.head.position.x;
             const dy = player.torso.position.y - this.head.position.y;
             const dist = Math.hypot(dx, dy);
-            if (dist < 280) {
+            if (dist < 260) {
               if (this.aggression > 0.5) this.targetDir = Math.atan2(dy, dx);
               else if (this.aggression < 0.2) this.targetDir = Math.atan2(-dy, -dx);
             }
           }
-          const force = 0.00025 * this.speed;
+          const force = 0.00022 * this.speed;
           Body.applyForce(this.head, this.head.position, {
             x: Math.cos(this.targetDir) * force,
             y: Math.sin(this.targetDir) * force
           });
-          Body.applyForce(this.head, this.head.position, { x: 0, y: -0.00004 });
+          Body.applyForce(this.head, this.head.position, { x: 0, y: -0.00003 });
         },
         kill() {
           this.alive = false;
-          for (const c of this.composite.constraints) c.stiffness = 0.15;
+          for (const c of this.composite.constraints) c.stiffness = 0.14;
         }
       };
     }
 
-    function createDivingCage(x, y) {
-      const cage = Bodies.rectangle(x, y, 90, 110, {
-        isStatic: true, label: "cage",
-        render: { fillStyle: "#94a3b8", strokeStyle: "#e2e8f0", lineWidth: 3 },
-        chamfer: { radius: 8 }
-      });
-      const bars = [];
-      for (let i = -1; i <= 1; i++) {
-        bars.push(Bodies.rectangle(x + i * 28, y, 6, 100, {
-          isStatic: true, render: { fillStyle: "#334155" }
-        }));
+    function steel(fill) {
+      return { isStatic: true, render: { fillStyle: fill || "#2a3036" }, friction: 0.8 };
+    }
+
+    function createDivingBell(cx, cy) {
+      const w = 118;
+      const h = 148;
+      const t = 10;
+      const doorH = 92;
+      const lintelH = 28;
+      const sillH = 18;
+      const floor = Bodies.rectangle(cx, cy + h / 2 - t / 2, w, t, Object.assign(steel("#3a4148"), { label: "bellFloor" }));
+      const roof = Bodies.rectangle(cx, cy - h / 2 + t / 2, w, t, Object.assign(steel("#32383e"), { label: "bellRoof" }));
+      const leftTop = Bodies.rectangle(cx - w / 2 + t / 2, cy - h / 2 + lintelH / 2 + t, t, lintelH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
+      const rightTop = Bodies.rectangle(cx + w / 2 - t / 2, cy - h / 2 + lintelH / 2 + t, t, lintelH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
+      const leftSill = Bodies.rectangle(cx - w / 2 + t / 2, cy + h / 2 - sillH / 2 - t / 2, t, sillH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
+      const rightSill = Bodies.rectangle(cx + w / 2 - t / 2, cy + h / 2 - sillH / 2 - t / 2, t, sillH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
+      const leftDoor = Bodies.rectangle(cx - w / 2 + t / 2, cy + 10, t, doorH, Object.assign(steel("#5a4330"), { label: "bellDoor" }));
+      const rightDoor = Bodies.rectangle(cx + w / 2 - t / 2, cy + 10, t, doorH, Object.assign(steel("#5a4330"), { label: "bellDoor" }));
+      const hook = Bodies.rectangle(cx, cy - h / 2 - 14, 14, 20, Object.assign(steel("#4a5158"), { label: "bellHook" }));
+      const lamp = Bodies.rectangle(cx, cy - h / 2 + 18, 16, 8, Object.assign(steel("#6b4e1e"), { label: "bellLamp" }));
+
+      const parts = [floor, roof, leftTop, rightTop, leftSill, rightSill, leftDoor, rightDoor, hook, lamp];
+      bell.parts = parts;
+      bell.walls = [floor, roof, leftTop, rightTop, leftSill, rightSill, leftDoor, rightDoor];
+      bell.floor = floor;
+      bell.roof = roof;
+      bell.doors = [
+        {
+          body: leftDoor,
+          closed: { x: leftDoor.position.x, y: leftDoor.position.y },
+          open: { x: leftDoor.position.x - 26, y: leftDoor.position.y - 86 }
+        },
+        {
+          body: rightDoor,
+          closed: { x: rightDoor.position.x, y: rightDoor.position.y },
+          open: { x: rightDoor.position.x + 26, y: rightDoor.position.y - 86 }
+        }
+      ];
+      bell.park = { x: cx, y: cy };
+      setDoorOpen(true);
+      return parts;
+    }
+
+    function bellCenter() {
+      return bell.floor ? { x: bell.floor.position.x, y: bell.floor.position.y - 68 } : { x: CONFIG.width / 2, y: CONFIG.islandY };
+    }
+
+    function translateBell(dx, dy) {
+      for (const part of bell.parts) {
+        Body.setPosition(part, { x: part.position.x + dx, y: part.position.y + dy });
+        Body.setVelocity(part, { x: 0, y: 0 });
       }
-      return { body: cage, bars, x, y };
+      for (const d of bell.doors) {
+        d.closed.x += dx; d.closed.y += dy;
+        d.open.x += dx; d.open.y += dy;
+      }
+    }
+
+    function setDoorOpen(open) {
+      bell.doorOpen = open;
+      for (const d of bell.doors) {
+        const target = open ? d.open : d.closed;
+        Body.setPosition(d.body, { x: target.x, y: target.y });
+        Body.setVelocity(d.body, { x: 0, y: 0 });
+      }
+    }
+
+    function playerInsideBell() {
+      if (!player || !bell.floor) return false;
+      const c = bellCenter();
+      const p = player.torso.position;
+      return Math.abs(p.x - c.x) < 46 && p.y < bell.floor.position.y - 8 && p.y > bell.roof.position.y + 8;
+    }
+
+    function carryPlayerWithBell(dx, dy) {
+      if (!player) return;
+      Composite.translate(player.composite, { x: dx, y: dy });
+      for (const b of player.composite.bodies) Body.setVelocity(b, { x: b.velocity.x, y: 0 });
     }
 
     function createIsland() {
-      return Bodies.rectangle(CONFIG.width / 2, CONFIG.islandY + 50, 760, 90, {
+      const ground = Bodies.rectangle(CONFIG.width / 2, CONFIG.islandY + 58, 820, 84, {
         isStatic: true, label: "island",
-        render: { fillStyle: "#3d6b4f" },
-        chamfer: { radius: 12 }
+        render: { fillStyle: "#18241c" }
       });
+      const cliffL = Bodies.rectangle(CONFIG.width / 2 - 430, CONFIG.islandY + 10, 70, 180, {
+        isStatic: true, render: { fillStyle: "#12181c" }
+      });
+      const cliffR = Bodies.rectangle(CONFIG.width / 2 + 430, CONFIG.islandY + 10, 70, 180, {
+        isStatic: true, render: { fillStyle: "#12181c" }
+      });
+      return [ground, cliffL, cliffR];
     }
 
     const keys = {};
@@ -276,7 +368,10 @@
       keys[e.code] = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
     });
-    window.addEventListener("keyup", e => { keys[e.code] = false; });
+    window.addEventListener("keyup", e => {
+      keys[e.code] = false;
+      if (e.code === "Space") jumpLocked = false;
+    });
 
     const mouse = { x: 0, y: 0, down: false, right: false };
     window.addEventListener("mousemove", e => {
@@ -296,7 +391,7 @@
     window.addEventListener("contextmenu", e => e.preventDefault());
 
     function shootHarpoon() {
-      if (harpoon || !player || !isDiving) return;
+      if (harpoon || !player || bell.mode === "docked") return;
       const head = player.head.position;
       const worldMouse = {
         x: mouse.x + camera.x - CONFIG.width / 2,
@@ -307,17 +402,16 @@
       const len = Math.hypot(dx, dy) || 1;
       const dir = { x: dx / len, y: dy / len };
 
-      harpoon = Bodies.rectangle(head.x + dir.x * 30, head.y + dir.y * 30, 28, 6, {
-        label: "harpoon", density: 0.002, frictionAir: 0.01,
-        render: { fillStyle: "#cbd5e1" }, chamfer: { radius: 2 }
+      harpoon = Bodies.rectangle(head.x + dir.x * 26, head.y + dir.y * 26, 26, 5, {
+        label: "harpoon", density: 0.002, frictionAir: 0.012,
+        render: { fillStyle: "#8a9096" }
       });
       Body.setVelocity(harpoon, { x: dir.x * CONFIG.harpoonSpeed, y: dir.y * CONFIG.harpoonSpeed });
       Body.setAngle(harpoon, Math.atan2(dir.y, dir.x));
-
       harpoonConstraint = Constraint.create({
         bodyA: player.rightArm, bodyB: harpoon,
-        stiffness: 0.0001, length: 40,
-        render: { strokeStyle: "#e2e8f0", lineWidth: 2, type: "line" }
+        stiffness: 0.0001, length: 36,
+        render: { strokeStyle: "#6a7076", lineWidth: 2, type: "line" }
       });
       Composite.add(world, [harpoon, harpoonConstraint]);
     }
@@ -325,7 +419,7 @@
     function reelHarpoon() {
       if (!harpoon || !harpoonConstraint) return;
       reelActive = true;
-      harpoonConstraint.stiffness = 0.04;
+      harpoonConstraint.stiffness = 0.045;
     }
 
     function releaseHarpoon() {
@@ -355,15 +449,26 @@
           }
         }
       });
+
+      Events.on(engine, "collisionActive", event => {
+        grounded = false;
+        for (const pair of event.pairs) {
+          const a = pair.bodyA.label;
+          const b = pair.bodyB.label;
+          const hitLeg = a === "leftLeg" || a === "rightLeg" || b === "leftLeg" || b === "rightLeg" || a === "torso" || b === "torso";
+          const hitGround = a === "island" || b === "island" || a === "bellFloor" || b === "bellFloor";
+          if (hitLeg && hitGround) grounded = true;
+        }
+      });
     }
 
     function tryCollectFish() {
-      if (!harpoon || !isDiving) return;
-      const cagePos = { x: CONFIG.width / 2, y: CONFIG.islandY + 20 };
+      if (!harpoon || bell.mode === "docked") return;
+      const c = bellCenter();
       for (const e of [...EntityRegistry.entities]) {
         if (e.def && !e.alive && e.attached) {
           const headPos = e.head.position;
-          if (Math.abs(headPos.y - cagePos.y) < 140 && Math.abs(headPos.x - cagePos.x) < 160) {
+          if (Math.abs(headPos.y - c.y) < 120 && Math.abs(headPos.x - c.x) < 110) {
             cageInventory.push({
               typeKey: e.typeKey, name: e.def.name, edible: e.def.edible,
               prepRequired: e.def.prepRequired, risk: e.def.risk
@@ -371,7 +476,7 @@
             EntityRegistry.remove(e);
             releaseHarpoon();
             updateCageUI();
-            showToast("Collected " + e.def.name);
+            showToast("Hauled " + e.def.name + " into the bell.");
           }
         }
       }
@@ -382,8 +487,8 @@
       el.innerHTML = "";
       cageInventory.forEach((item, i) => {
         const slot = document.createElement("div");
-        slot.className = "inventory-slot bg-slate-800 border border-slate-600 rounded-lg flex flex-col items-center justify-center text-xs p-1 cursor-pointer hover:border-cyan-400";
-        slot.innerHTML = '<div class="w-8 h-5 rounded" style="background:' + (CONFIG.fishTypes[item.typeKey] && CONFIG.fishTypes[item.typeKey].color || "#888") + '"></div><span class="truncate max-w-[56px]">' + item.name.split(" ").pop() + "</span>";
+        slot.className = "inventory-slot bg-zinc-950 border border-stone-700 flex flex-col items-center justify-center text-xs p-1 cursor-pointer hover:border-amber-800";
+        slot.innerHTML = '<div class="w-8 h-5" style="background:' + ((CONFIG.fishTypes[item.typeKey] && CONFIG.fishTypes[item.typeKey].color) || "#444") + '"></div><span class="truncate max-w-[56px]">' + item.name.split(" ").pop() + "</span>";
         slot.onclick = () => openPrepModal(i);
         el.appendChild(slot);
       });
@@ -391,7 +496,7 @@
 
     function showToast(msg) {
       const panel = document.getElementById("dialogue-panel");
-      document.getElementById("dialogue-speaker").textContent = "System";
+      document.getElementById("dialogue-speaker").textContent = "Bell";
       document.getElementById("dialogue-text").textContent = msg;
       document.getElementById("dialogue-choices").innerHTML = "";
       panel.classList.remove("hidden");
@@ -402,7 +507,7 @@
       selectedFishForPrep = index;
       const item = cageInventory[index];
       document.getElementById("prep-desc").textContent =
-        "You are preparing: " + item.name + ". Correct preparation and correct identification determine whether the Chef stays healthy.";
+        "You are preparing: " + item.name + ". Correct preparation and identification decide whether the Chef stays healthy.";
       document.getElementById("prep-clean").checked = false;
       document.getElementById("prep-cook").checked = false;
       document.getElementById("prep-identify").checked = false;
@@ -424,41 +529,38 @@
       const identified = document.getElementById("prep-identify").checked;
       let correct = true;
       let message = "";
-
       if (!item.edible) {
         if (identified) {
           correct = false;
-          message = "Chef is violently ill! This species is toxic / not safe for humans.";
+          message = "Chef is violently ill. This species is not safe for humans.";
         } else {
-          message = "You correctly rejected the toxic fish. Chef is safe (and a bit hungry).";
+          message = "You rejected the toxic fish. Chef is safe.";
         }
       } else {
         const needsId = item.prepRequired.indexOf("identify") !== -1;
         if (!cleaned || !cooked || (needsId && !identified)) {
           correct = false;
-          message = "Chef feels unwell. You missed a critical preparation step.";
+          message = "Chef feels unwell. A preparation step was missed.";
         } else {
-          message = "Delicious and safe! Chef is happy and healthy.";
+          message = "Safe meal. Chef stays healthy.";
         }
       }
-
       const resultEl = document.getElementById("prep-result");
       resultEl.textContent = message;
-      resultEl.className = "mt-3 text-sm " + (correct ? "text-emerald-400" : "text-rose-400");
+      resultEl.className = "mt-3 text-sm " + (correct ? "text-emerald-500" : "text-red-500");
       resultEl.classList.remove("hidden");
-
       setTimeout(() => {
         cageInventory.splice(selectedFishForPrep, 1);
         updateCageUI();
         document.getElementById("prep-modal").classList.add("hidden");
         document.getElementById("prep-modal").classList.remove("flex");
         selectedFishForPrep = null;
-        showToast(correct ? "Correct preparation – good health & safety practice!" : "Review the preparation steps.");
-      }, 2600);
+        showToast(correct ? "Correct preparation." : "Review the preparation steps.");
+      }, 2400);
     };
 
     function createNPC(x, y, name, dialogueLines, options) {
-      const hum = createHumanoid(x, y, 0.5, Object.assign({ name: name, shirt: "#7c3aed" }, options || {}));
+      const hum = createHumanoid(x, y, 0.5, Object.assign({ name: name, shirt: "#3a2a20" }, options || {}));
       for (const b of hum.composite.bodies) Body.setStatic(b, true);
       return {
         composite: hum.composite, head: hum.head, torso: hum.torso,
@@ -472,7 +574,7 @@
       document.getElementById("dialogue-speaker").textContent = speaker;
       document.getElementById("dialogue-text").textContent = Array.isArray(lines) ? lines[0] : lines;
       document.getElementById("dialogue-choices").innerHTML =
-        '<button class="bg-cyan-700 hover:bg-cyan-600 text-white text-sm px-3 py-1 rounded-lg" onclick="document.getElementById(\'dialogue-panel\').classList.add(\'hidden\')">Close</button>';
+        '<button class="bg-stone-800 hover:bg-stone-700 text-stone-200 text-sm px-3 py-1 border border-stone-600" onclick="document.getElementById(\'dialogue-panel\').classList.add(\'hidden\')">Close</button>';
       panel.classList.remove("hidden");
     }
 
@@ -483,15 +585,24 @@
       const h = render.options.height;
       const surfaceScreenY = CONFIG.islandY - bounds.min.y;
 
-      ctx.fillStyle = "#7ec8e3";
+      ctx.fillStyle = "#0a0d11";
       ctx.fillRect(0, 0, w, h);
+
+      if (surfaceScreenY > 0) {
+        const skyH = Math.min(h, surfaceScreenY);
+        const sky = ctx.createLinearGradient(0, 0, 0, skyH);
+        sky.addColorStop(0, "#090b0e");
+        sky.addColorStop(1, "#14181e");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, w, skyH);
+      }
 
       if (surfaceScreenY < h) {
         const y0 = Math.max(0, surfaceScreenY);
         const grad = ctx.createLinearGradient(0, y0, 0, h);
-        grad.addColorStop(0, "#2b8fb8");
-        grad.addColorStop(0.45, "#0b4a66");
-        grad.addColorStop(1, "#062433");
+        grad.addColorStop(0, "#102028");
+        grad.addColorStop(0.35, "#0a141a");
+        grad.addColorStop(1, "#030508");
         ctx.fillStyle = grad;
         ctx.fillRect(0, y0, w, h - y0);
       }
@@ -500,19 +611,98 @@
     function drawLabels() {
       const ctx = render.context;
       const bounds = render.bounds;
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "13px system-ui, sans-serif";
+      const c = bellCenter();
+      ctx.fillStyle = "#b8b0a4";
+      ctx.font = "12px monospace";
       ctx.textAlign = "center";
-      ctx.fillText("DIVING CAGE – press E", CONFIG.width / 2 - bounds.min.x, CONFIG.islandY - 80 - bounds.min.y);
-      ctx.fillText("Chef Boris", CONFIG.width / 2 + 220 - bounds.min.x, CONFIG.islandY - 90 - bounds.min.y);
-      ctx.fillText("Marina (shop)", CONFIG.width / 2 - 260 - bounds.min.x, CONFIG.islandY - 90 - bounds.min.y);
+      ctx.fillText(bell.doorOpen ? "BELL DOOR OPEN" : "BELL SEALED", c.x - bounds.min.x, c.y - 96 - bounds.min.y);
+      ctx.fillText("Chef", CONFIG.width / 2 + 230 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
+      ctx.fillText("Shop", CONFIG.width / 2 - 270 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
+    }
+
+    function updateBellStatus() {
+      const el = document.getElementById("bell-status");
+      const door = bell.doorOpen ? "door open" : "door sealed";
+      el.textContent = "Bell: " + bell.mode + " · " + door;
+    }
+
+    function handleBellCommand() {
+      const near = player && Math.hypot(player.torso.position.x - bellCenter().x, player.torso.position.y - bellCenter().y) < 130;
+      if (!near && !playerInsideBell()) {
+        showToast("Stand in the bell doorway.");
+        return;
+      }
+
+      if (bell.mode === "docked") {
+        if (bell.doorOpen) {
+          if (!playerInsideBell()) {
+            showToast("Step fully inside before sealing the door.");
+            return;
+          }
+          setDoorOpen(false);
+          showToast("Door sealed. Press E again to descend.");
+        } else {
+          if (!playerInsideBell()) {
+            setDoorOpen(true);
+            showToast("Door opened.");
+            return;
+          }
+          bell.mode = "descending";
+          showToast("Descending. Press E to return to the surface.");
+        }
+        updateBellStatus();
+        return;
+      }
+
+      if (bell.mode === "descending" || bell.mode === "holding") {
+        bell.mode = "ascending";
+        showToast("Ascending.");
+        updateBellStatus();
+      }
+    }
+
+    function stepBell(dt) {
+      if (!bell.floor) return;
+      let dy = 0;
+      if (bell.mode === "descending") {
+        dy = CONFIG.descendSpeed;
+        if (bell.floor.position.y >= CONFIG.islandY + CONFIG.maxDepth) {
+          dy = 0;
+          bell.mode = "holding";
+        }
+      } else if (bell.mode === "ascending") {
+        dy = -CONFIG.ascendSpeed;
+        const parkY = bell.park.y + 68;
+        if (bell.floor.position.y + dy <= parkY) {
+          dy = parkY - bell.floor.position.y;
+          translateBell(0, dy);
+          if (playerInsideBell()) carryPlayerWithBell(0, dy);
+          arriveSurface();
+          return;
+        }
+      }
+
+      if (dy !== 0) {
+        translateBell(0, dy);
+        if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(0, dy);
+      }
+    }
+
+    function arriveSurface() {
+      bell.mode = "docked";
+      setDoorOpen(true);
+      if (player) {
+        for (const b of player.composite.bodies) Body.setVelocity(b, { x: 1.2, y: -1.5 });
+      }
+      showToast("Surface reached. Door open.");
+      updateBellStatus();
     }
 
     function init() {
       engine = Engine.create();
       world = engine.world;
       engine.gravity.x = 0;
-      engine.gravity.y = 0.6;
+      engine.gravity.y = 1.05;
 
       render = Render.create({
         canvas: document.getElementById("game-canvas"),
@@ -521,60 +711,56 @@
           width: CONFIG.width,
           height: CONFIG.height,
           wireframes: false,
-          background: "#7ec8e3",
+          background: "#07090d",
           hasBounds: true,
-          showAngleIndicator: false,
           pixelRatio: window.devicePixelRatio || 1
         }
       });
 
       Composite.add(world, createIsland());
+      Composite.add(world, createDivingBell(CONFIG.width / 2, CONFIG.islandY - 36));
 
-      const cage = createDivingCage(CONFIG.width / 2, CONFIG.islandY - 10);
-      Composite.add(world, [cage.body].concat(cage.bars));
-
-      player = createHumanoid(CONFIG.width / 2 - 80, CONFIG.islandY - 70, CONFIG.playerScale, {
-        isPlayer: true, name: "Diver", shirt: "#0e7490"
+      player = createHumanoid(CONFIG.width / 2 - 90, CONFIG.islandY - 80, CONFIG.playerScale, {
+        isPlayer: true, name: "Diver", shirt: "#1c252c"
       });
       EntityRegistry.register(player);
 
-      const chef = createNPC(CONFIG.width / 2 + 220, CONFIG.islandY - 40, "Chef Boris",
-        "Bring me properly prepared fish! I get sick easily – correct cleaning, cooking and species knowledge keep me healthy.",
-        { shirt: "#b45309", pants: "#451a03" });
-      Body.scale(chef.torso, 1.35, 1.25);
+      const chef = createNPC(CONFIG.width / 2 + 230, CONFIG.islandY - 42, "Chef",
+        "Bring prepared fish. Wrong species or sloppy prep makes me ill.",
+        { shirt: "#3b2416", pants: "#140e0a" });
+      Body.scale(chef.torso, 1.4, 1.2);
       EntityRegistry.register(chef);
 
-      const shopkeeper = createNPC(CONFIG.width / 2 - 260, CONFIG.islandY - 40, "Marina",
-        "Welcome to the island shop. Buy basic gear later. For now, use the diving cage in the centre to descend.",
-        { shirt: "#059669" });
-      EntityRegistry.register(shopkeeper);
+      EntityRegistry.register(createNPC(CONFIG.width / 2 - 270, CONFIG.islandY - 42, "Shop",
+        "Seal both bell doors before you drop. Do not dive with them open.",
+        { shirt: "#24322a" }));
 
       const fishSpawns = [
-        { x: CONFIG.width / 2 - 120, y: 600, type: "safe_cod" },
-        { x: CONFIG.width / 2 + 180, y: 780, type: "passive_sole" },
-        { x: CONFIG.width / 2 - 60, y: 950, type: "toxic_puffer" },
-        { x: CONFIG.width / 2 + 90, y: 1100, type: "aggressive_barracuda" },
-        { x: CONFIG.width / 2 - 200, y: 1300, type: "safe_cod" },
-        { x: CONFIG.width / 2 + 40, y: 1500, type: "toxic_puffer" }
+        { x: CONFIG.width / 2 - 120, y: 620, type: "safe_cod" },
+        { x: CONFIG.width / 2 + 170, y: 800, type: "passive_sole" },
+        { x: CONFIG.width / 2 - 50, y: 980, type: "toxic_puffer" },
+        { x: CONFIG.width / 2 + 90, y: 1140, type: "aggressive_barracuda" },
+        { x: CONFIG.width / 2 - 190, y: 1320, type: "safe_cod" },
+        { x: CONFIG.width / 2 + 30, y: 1520, type: "toxic_puffer" }
       ];
       for (const s of fishSpawns) EntityRegistry.register(createSegmentedFish(s.x, s.y, s.type));
 
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 10; i++) {
         Composite.add(world, Bodies.rectangle(
-          80 + Math.random() * (CONFIG.width - 160),
-          500 + Math.random() * 1400,
-          40 + Math.random() * 60,
-          30 + Math.random() * 40,
-          { isStatic: true, render: { fillStyle: "#334155" }, chamfer: { radius: 8 } }
+          90 + Math.random() * (CONFIG.width - 180),
+          520 + Math.random() * 1400,
+          36 + Math.random() * 70,
+          22 + Math.random() * 40,
+          { isStatic: true, render: { fillStyle: "#151a20" } }
         ));
       }
 
       setupCollisions();
       Events.on(render, "beforeRender", drawBackground);
       Events.on(render, "afterRender", drawLabels);
-
       Runner.run(Runner.create(), engine);
       Render.run(render);
+      updateBellStatus();
 
       let last = performance.now();
       function loop(now) {
@@ -598,54 +784,56 @@
     function update(dt) {
       if (!player) return;
 
-      const moveForce = isDiving ? 0.0018 : 0.0035;
-      if (keys.KeyA || keys.ArrowLeft) player.applyForceToTorso(-moveForce, 0);
-      if (keys.KeyD || keys.ArrowRight) player.applyForceToTorso(moveForce, 0);
-      if (keys.KeyW || keys.ArrowUp) player.applyForceToTorso(0, -moveForce * 1.1);
-      if (keys.KeyS || keys.ArrowDown) player.applyForceToTorso(0, moveForce * 0.9);
-
-      const cageX = CONFIG.width / 2;
-      const cageY = CONFIG.islandY;
-      const distToCage = Math.hypot(player.torso.position.x - cageX, player.torso.position.y - cageY);
-      if (keys.KeyE && distToCage < 110) {
-        isDiving = !isDiving;
+      if (keys.KeyE) {
         keys.KeyE = false;
-        if (isDiving) {
-          player.setPosition(cageX, cageY + 90);
-          engine.gravity.y = 0.22;
-          showToast("Diving suit equipped. Descend carefully. Watch oxygen.");
-        } else {
-          player.setPosition(cageX - 60, cageY - 50);
-          engine.gravity.y = 0.6;
-          oxygen = Math.min(100, oxygen + 20);
-          showToast("Surfaced. Oxygen recovering.");
-        }
+        handleBellCommand();
       }
 
-      if (isDiving) {
+      stepBell(dt);
+
+      const torso = player.torso;
+      let vx = torso.velocity.x;
+      const left = keys.KeyA || keys.ArrowLeft;
+      const right = keys.KeyD || keys.ArrowRight;
+      if (left && !right) vx = -CONFIG.walkSpeed;
+      else if (right && !left) vx = CONFIG.walkSpeed;
+      else vx *= 0.78;
+
+      let vy = torso.velocity.y;
+      if (vy < -8) vy = -8;
+      if (vy > 16) vy = 16;
+
+      if ((keys.Space) && grounded && !jumpLocked) {
+        vy = -CONFIG.jumpSpeed;
+        jumpLocked = true;
+        grounded = false;
+      }
+
+      Body.setVelocity(torso, { x: vx, y: vy });
+
+      if (bell.mode !== "docked") {
         oxygen -= CONFIG.oxygenDrainPerSec * dt;
         if (oxygen <= 0) {
           oxygen = 0;
-          isDiving = false;
-          player.setPosition(cageX - 60, cageY - 50);
-          engine.gravity.y = 0.6;
-          showToast("Oxygen depleted – forced return to surface!");
+          bell.mode = "ascending";
+          showToast("Oxygen gone. Bell returning.");
+          updateBellStatus();
         }
       } else {
-        oxygen = Math.min(100, oxygen + 15 * dt);
+        oxygen = Math.min(100, oxygen + 18 * dt);
       }
 
-      if (mouse.down && isDiving) {
+      if (mouse.down && bell.mode !== "docked") {
         shootHarpoon();
         mouse.down = false;
       }
       if (mouse.right && harpoon) reelHarpoon();
-
       if (reelActive && harpoon && harpoonConstraint) {
         const target = player.rightArm.position;
         const dir = Vector.sub(target, harpoon.position);
-        const dist = Vector.magnitude(dir);
-        if (dist > 20) Body.applyForce(harpoon, harpoon.position, Vector.mult(Vector.normalise(dir), CONFIG.reelForce));
+        if (Vector.magnitude(dir) > 20) {
+          Body.applyForce(harpoon, harpoon.position, Vector.mult(Vector.normalise(dir), CONFIG.reelForce));
+        }
         tryCollectFish();
       }
 
@@ -659,11 +847,11 @@
         max: { x: camera.x + CONFIG.width / 2, y: camera.y + CONFIG.height / 2 }
       });
 
-      const currentDepth = Math.max(0, Math.round((head.y - CONFIG.islandY) / 10));
+      const currentDepth = Math.max(0, Math.round((bell.floor.position.y - (bell.park.y + 68)) / 10));
       document.getElementById("depth-display").textContent = currentDepth + " m";
       const ox = document.getElementById("oxygen-display");
       ox.textContent = Math.round(oxygen) + "%";
-      ox.style.color = oxygen < 30 ? "#f87171" : "#67e8f9";
+      ox.style.color = oxygen < 30 ? "#c44" : "#9aa";
     }
 
     window.addEventListener("load", init);
