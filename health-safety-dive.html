@@ -3,71 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Health &amp; Safety Dive – Level 3 Game Dev Prototype</title>
+  <title>Health and Safety Dive</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; overflow: hidden; background: #07090d; height: 100%; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #07090d; height: 100%; font-family: "Courier New", Courier, monospace; }
     #game-canvas { display: block; width: 100vw; height: 100vh; background: #07090d; }
     .ui-panel { pointer-events: auto; }
-    .dialogue-box { max-width: 420px; }
-    .inventory-slot { min-width: 64px; min-height: 64px; }
+    .hud-box { background: #1a1a14; color: #d8c98a; border: 3px solid #6a5a32; padding: 8px 10px; box-shadow: 4px 4px 0 #000; }
+    .dialogue-box { max-width: 460px; }
   </style>
 </head>
 <body class="relative select-none">
   <canvas id="game-canvas"></canvas>
-
-  <div id="ui-root" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4">
-    <div class="flex justify-between items-start">
-      <div class="ui-panel bg-black/80 text-stone-200 px-4 py-2 border border-stone-700">
-        <div class="text-xs text-stone-400 uppercase tracking-widest">Health &amp; Safety Dive</div>
-        <div class="text-sm mt-1">Depth: <span id="depth-display">0 m</span> · Oxygen: <span id="oxygen-display">100%</span></div>
-        <div class="text-xs text-stone-500 mt-1">A/D walk · Space jump · E door / dive / surface · LMB harpoon · RMB reel</div>
-        <div id="bell-status" class="text-xs text-amber-600 mt-1">Bell: docked · door open</div>
+  <div id="ui-root" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-3">
+    <div class="flex justify-between items-start gap-3">
+      <div class="ui-panel hud-box">
+        <div style="font-size:16px;color:#efd36a;">DIVE JOB</div>
+        <div>DEPTH <span id="depth-display">0 m</span></div>
+        <div>OXYGEN <span id="oxygen-display">100/100</span></div>
+        <div id="bell-status">CAGE docked / door open</div>
+        <div>CASH <span id="money-display">0</span></div>
+        <div id="upgrade-hud" style="font-size:12px;color:#8a8060;"></div>
+        <div style="margin-top:6px;font-size:12px;color:#8a8060;">A D move | SPACE jump | E use | drag fish on land | spear dive</div>
       </div>
-      <div class="ui-panel bg-black/80 text-stone-200 px-4 py-2 border border-stone-700">
-        <div class="text-xs text-amber-700 uppercase tracking-widest">Cage Inventory</div>
-        <div id="cage-inventory" class="flex gap-2 mt-2"></div>
+      <div class="ui-panel hud-box">
+        <div style="color:#efd36a;">NOTE</div>
+        <div style="font-size:12px;max-width:180px;">Cook on GRILL until gold-brown. Closer to perfect pays more cash. Max cage depth can lure a rare angler.</div>
       </div>
     </div>
     <div class="flex justify-center">
-      <div id="dialogue-panel" class="ui-panel dialogue-box hidden bg-black/90 text-stone-200 p-5 border border-stone-700">
-        <div id="dialogue-speaker" class="text-amber-600 font-semibold mb-1"></div>
-        <div id="dialogue-text" class="text-sm leading-relaxed"></div>
+      <div id="dialogue-panel" class="ui-panel dialogue-box hidden hud-box">
+        <div id="dialogue-speaker" style="color:#efd36a;"></div>
+        <div id="dialogue-text"></div>
         <div id="dialogue-choices" class="mt-3 flex flex-wrap gap-2"></div>
       </div>
     </div>
   </div>
-
-  <div id="prep-modal" class="absolute inset-0 hidden items-center justify-center bg-black/70 pointer-events-auto">
-    <div class="bg-zinc-950 text-stone-200 p-6 w-full max-w-md border border-stone-700">
-      <h2 class="text-xl font-bold text-amber-700 mb-2">Prepare Fish</h2>
-      <p id="prep-desc" class="text-sm text-stone-400 mb-4"></p>
-      <div class="space-y-2 mb-4">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-clean" />
-          <span>Clean thoroughly (remove guts / scales)</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-cook" />
-          <span>Cook properly</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="prep-identify" />
-          <span>Confirm species is edible for humans</span>
-        </label>
-      </div>
-      <div class="flex gap-3">
-        <button id="prep-confirm" class="flex-1 bg-stone-800 hover:bg-stone-700 border border-stone-600 py-2">Feed to Chef</button>
-        <button id="prep-cancel" class="px-4 bg-black hover:bg-zinc-900 border border-stone-700 py-2">Cancel</button>
-      </div>
-      <p id="prep-result" class="mt-3 text-sm hidden"></p>
-    </div>
-  </div>
-
   <script>
-    const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events, Query, Vector } = Matter;
-
+    const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events, Vector } = Matter;
     function shadeHex(hex, amount) {
       const raw = String(hex || "#888888").replace("#", "");
       const full = raw.length === 3 ? raw.split("").map(c => c + c).join("") : raw;
@@ -77,783 +51,666 @@
       const b = Math.max(0, Math.min(255, (num & 255) + amount));
       return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     }
-
+    const DEBUG_ANGLER_EVERY_DIVE = false;
     const CONFIG = {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      islandY: 240,
-      playerScale: 0.58,
-      walkSpeed: 2.15,
-      jumpSpeed: 7.2,
-      harpoonSpeed: 16,
-      reelForce: 0.007,
-      oxygenDrainPerSec: 3.2,
-      maxDepth: 1700,
-      descendSpeed: 1.35,
-      ascendSpeed: 1.7,
+      width: window.innerWidth, height: window.innerHeight, worldX: window.innerWidth / 2,
+      islandY: 240, waterY: 340, playerScale: 0.58, walkSpeed: 2.15, jumpSpeed: 16.5,
+      harpoonSpeed: 22, oxygenDrainPerSec: 3.2, maxDepth: 1700, descendSpeed: 0.55, ascendSpeed: 0.7,
       fishTypes: {
-        safe_cod: { name: "Atlantic Cod", color: "#24364f", segments: 6, length: 74, speed: 1.2, aggression: 0.1, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "low" },
-        toxic_puffer: { name: "Pufferfish", color: "#6a5414", segments: 5, length: 52, speed: 1.0, aggression: 0.55, edible: false, prepRequired: ["clean", "cook", "identify"], risk: "high" },
-        passive_sole: { name: "Dover Sole", color: "#4a3b2c", segments: 7, length: 62, speed: 0.8, aggression: 0.0, edible: true, prepRequired: ["clean", "cook"], risk: "low" },
-        aggressive_barracuda: { name: "Barracuda", color: "#24362c", segments: 8, length: 96, speed: 1.8, aggression: 0.85, edible: true, prepRequired: ["clean", "cook", "identify"], risk: "medium" }
+        safe_cod: { name: "Atlantic Cod", color: "#4a5c3a", shape: "cod", segments: 4, length: 90, height: 24, speed: 0.7, aggression: 0.15, edible: true, value: 1 },
+        haddock: { name: "Haddock", color: "#6a6a58", shape: "cod", segments: 4, length: 80, height: 22, speed: 0.65, aggression: 0.1, edible: true, value: 1 },
+        mackerel: { name: "Mackerel", color: "#3a5a62", shape: "pike", segments: 5, length: 70, height: 14, speed: 0.85, aggression: 0.2, edible: true, value: 1 },
+        sea_bass: { name: "Sea Bass", color: "#2a3a38", shape: "cod", segments: 4, length: 86, height: 22, speed: 0.6, aggression: 0.2, edible: true, value: 1.15 },
+        passive_sole: { name: "Dover Sole", color: "#c4a06a", shape: "sole", segments: 3, length: 64, height: 12, speed: 0.4, aggression: 0.0, edible: true, value: 1 },
+        pollock: { name: "Pollock", color: "#4a5860", shape: "cod", segments: 4, length: 88, height: 20, speed: 0.62, aggression: 0.12, edible: true, value: 0.9 },
+        aggressive_barracuda: { name: "Barracuda", color: "#7a9a88", shape: "pike", segments: 7, length: 140, height: 14, speed: 0.95, aggression: 0.85, edible: true, value: 1.2 },
+        conger_eel: { name: "Conger Eel", color: "#3a3c34", shape: "eel", segments: 12, length: 220, height: 12, speed: 0.55, aggression: 0.55, edible: true, value: 1.1 },
+        toxic_puffer: { name: "Pufferfish", color: "#d2b24a", shape: "puffer", segments: 1, length: 28, height: 26, speed: 0.45, aggression: 0.35, edible: false, value: 0 },
+        lionfish: { name: "Lionfish", color: "#b85a2a", shape: "puffer", segments: 1, length: 34, height: 24, speed: 0.4, aggression: 0.4, edible: false, value: 0 },
+        stonefish: { name: "Stonefish", color: "#6a5a40", shape: "sole", segments: 3, length: 48, height: 16, speed: 0.22, aggression: 0.15, edible: false, value: 0 },
+        oilfish: { name: "Oilfish", color: "#2a3840", shape: "pike", segments: 6, length: 110, height: 16, speed: 0.5, aggression: 0.25, edible: false, value: 0 },
+        bluefin: { name: "Bluefin Tuna", color: "#2c4a58", shape: "pike", segments: 6, length: 180, height: 28, speed: 0.9, aggression: 0.35, edible: true, value: 2.6, uncommon: true },
+        opah: { name: "Opah", color: "#8a3a48", shape: "cod", segments: 4, length: 120, height: 40, speed: 0.45, aggression: 0.1, edible: true, value: 2.2, uncommon: true },
+        king_salmon: { name: "King Salmon", color: "#c46a4a", shape: "pike", segments: 6, length: 150, height: 22, speed: 0.7, aggression: 0.2, edible: true, value: 2.4, uncommon: true },
+        deep_angler: { name: "Deep Angler", color: "#2a2418", shape: "angler", segments: 9, length: 260, height: 36, speed: 0.55, aggression: 0.92, edible: true, rare: true, value: 4 }
       }
     };
-
-    let engine, world, render;
-    let player = null;
-    let camera = { x: 0, y: 0 };
-    let oxygen = 100;
-    let harpoon = null;
-    let harpoonConstraint = null;
-    let reelActive = false;
-    let cageInventory = [];
-    let selectedFishForPrep = null;
-    let grounded = false;
-    let jumpLocked = false;
-
-    const bell = {
-      parts: [],
-      walls: [],
-      floor: null,
-      roof: null,
-      doors: [],
-      park: { x: 0, y: 0 },
-      doorOpen: true,
-      mode: "docked", // docked | descending | holding | ascending
-      innerW: 92,
-      innerH: 118
-    };
-
+    const FISH_KEYS = Object.keys(CONFIG.fishTypes).filter(k => !CONFIG.fishTypes[k].rare);
+    const COL = { world: 0x0001, player: 0x0002, bell: 0x0004, gap: 0x0008, npc: 0x0010, fish: 0x0020, floor: 0x0040, hook: 0x0080 };
+    const FX = { bubbles: [], motes: [], blood: [] };
+    const DEAD_MASK = COL.player | COL.bell | COL.floor | COL.world;
+    const HAUL_MASK = COL.player;
+    let engine, world, render, player, grill, hungryNpc, shopNpc;
+    let camera = { x: CONFIG.worldX, y: CONFIG.islandY };
+    let oxygen = 100, maxOxygen = 100, money = 0, grounded = false, jumpLocked = false, lastSafeY = 0;
+    let harpoon = null, harpoonConstraint = null, hookJoints = [], hookedFish = [], reelActive = false, spearDir = null;
+    let dragConstraint = null, draggedFish = null;
+    const discovered = new Set();
+    const upgrades = { oxygen: 0, speed: 0, depth: 0 };
+    const UPGRADE_MAX = 4;
+    const UPGRADE_COST = { oxygen: [8, 14, 22, 32], speed: [8, 16, 24, 34], depth: [10, 18, 28, 40] };
+    let anglerThisDive = false;
+    const bell = { parts: [], floor: null, roof: null, doors: [], hook: null, winch: null, park: { x: 0, y: 0 }, doorOpen: true, mode: "docked", swayT: 0, shakeT: 0, pendX: 0, pendV: 0 };
+    const SHAFT_HALF = 78;
     const EntityRegistry = {
       entities: [],
-      register(ent) {
-        this.entities.push(ent);
-        if (ent.composite) Composite.add(world, ent.composite);
-        else if (ent.body) Composite.add(world, ent.body);
-        return ent;
-      },
-      remove(ent) {
-        const idx = this.entities.indexOf(ent);
-        if (idx >= 0) this.entities.splice(idx, 1);
-        if (ent.composite) Composite.remove(world, ent.composite);
-        else if (ent.body) Composite.remove(world, ent.body);
-      },
-      update(dt) {
-        for (const e of this.entities) if (e.update) e.update(dt);
-      }
+      register(ent) { this.entities.push(ent); if (ent.composite) Composite.add(world, ent.composite); else if (ent.body) Composite.add(world, ent.body); return ent; },
+      remove(ent) { const i = this.entities.indexOf(ent); if (i >= 0) this.entities.splice(i, 1); if (ent.composite) Composite.remove(world, ent.composite); else if (ent.body) Composite.remove(world, ent.body); },
+      update(dt) { for (const e of this.entities) if (e.update) e.update(dt); }
     };
-
+    function currentMaxDepth() { return CONFIG.maxDepth + upgrades.depth * 420; }
+    function currentDrain() { return Math.max(1.1, CONFIG.oxygenDrainPerSec - upgrades.oxygen * 0.45); }
+    function currentPull() { return Math.min(11, 6.5 + upgrades.speed * 1.6); }
     function createHumanoid(x, y, scale, options) {
       options = options || {};
       const group = Body.nextGroup(true);
-      const skin = options.skin || "#8a6d52";
-      const shirt = options.shirt || "#1a2228";
-      const pants = options.pants || "#10141a";
-      const head = Bodies.rectangle(x, y - 42 * scale, 20 * scale, 22 * scale, {
-        label: "head", collisionFilter: { group },
-        render: { fillStyle: skin }, density: 0.002, frictionAir: 0.05, chamfer: { radius: 1 }
-      });
-      const torso = Bodies.rectangle(x, y, 20 * scale, 34 * scale, {
-        label: "torso", collisionFilter: { group },
-        render: { fillStyle: shirt }, density: 0.0032, frictionAir: 0.05, friction: 0.25
-      });
-      const leftArm = Bodies.rectangle(x - 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, {
-        label: "leftArm", collisionFilter: { group },
-        render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05
-      });
-      const rightArm = Bodies.rectangle(x + 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, {
-        label: "rightArm", collisionFilter: { group },
-        render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05
-      });
-      const leftLeg = Bodies.rectangle(x - 7 * scale, y + 32 * scale, 9 * scale, 28 * scale, {
-        label: "leftLeg", collisionFilter: { group },
-        render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4
-      });
-      const rightLeg = Bodies.rectangle(x + 7 * scale, y + 32 * scale, 9 * scale, 28 * scale, {
-        label: "rightLeg", collisionFilter: { group },
-        render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4
-      });
-
+      const filter = options.npc ? { group, category: COL.npc, mask: COL.world } : { group, category: COL.player, mask: COL.world | COL.player | COL.bell | COL.gap | COL.floor };
+      const skin = options.skin || "#8a6d52", shirt = options.shirt || "#1a2228", pants = options.pants || "#10141a";
+      const head = Bodies.rectangle(x, y - 24 * scale, 18 * scale, 18 * scale, { label: "head", collisionFilter: filter, render: { fillStyle: skin }, density: 0.002, frictionAir: 0.05 });
+      const torso = Bodies.rectangle(x, y, 20 * scale, 30 * scale, { label: "torso", collisionFilter: filter, render: { fillStyle: shirt }, density: 0.0032, frictionAir: 0.05, friction: 0.25 });
+      const leftArm = Bodies.rectangle(x - 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, { label: "leftArm", collisionFilter: filter, render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05 });
+      const rightArm = Bodies.rectangle(x + 16 * scale, y - 2 * scale, 8 * scale, 26 * scale, { label: "rightArm", collisionFilter: filter, render: { fillStyle: skin }, density: 0.0015, frictionAir: 0.05 });
+      const leftLeg = Bodies.rectangle(x - 7 * scale, y + 30 * scale, 9 * scale, 26 * scale, { label: "leftLeg", collisionFilter: filter, render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4 });
+      const rightLeg = Bodies.rectangle(x + 7 * scale, y + 30 * scale, 9 * scale, 26 * scale, { label: "rightLeg", collisionFilter: filter, render: { fillStyle: pants }, density: 0.0022, frictionAir: 0.04, friction: 0.4 });
+      const hidden = { visible: false, anchors: false };
       const constraints = [
-        Constraint.create({ bodyA: head, bodyB: torso, pointA: { x: 0, y: 11 * scale }, pointB: { x: 0, y: -17 * scale }, stiffness: 0.95, length: 2 }),
-        Constraint.create({ bodyA: torso, bodyB: leftArm, pointA: { x: -10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3 }),
-        Constraint.create({ bodyA: torso, bodyB: rightArm, pointA: { x: 10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3 }),
-        Constraint.create({ bodyA: torso, bodyB: leftLeg, pointA: { x: -6 * scale, y: 17 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2 }),
-        Constraint.create({ bodyA: torso, bodyB: rightLeg, pointA: { x: 6 * scale, y: 17 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2 })
+        Constraint.create({ bodyA: head, bodyB: torso, pointA: { x: 0, y: 9 * scale }, pointB: { x: 0, y: -15 * scale }, stiffness: 1, length: 1, render: hidden }),
+        Constraint.create({ bodyA: torso, bodyB: leftArm, pointA: { x: -10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3, render: hidden }),
+        Constraint.create({ bodyA: torso, bodyB: rightArm, pointA: { x: 10 * scale, y: -12 * scale }, pointB: { x: 0, y: -11 * scale }, stiffness: 0.7, length: 3, render: hidden }),
+        Constraint.create({ bodyA: torso, bodyB: leftLeg, pointA: { x: -6 * scale, y: 15 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2, render: hidden }),
+        Constraint.create({ bodyA: torso, bodyB: rightLeg, pointA: { x: 6 * scale, y: 15 * scale }, pointB: { x: 0, y: -12 * scale }, stiffness: 0.85, length: 2, render: hidden })
       ];
-
-      const composite = Composite.create({
-        bodies: [head, torso, leftArm, rightArm, leftLeg, rightLeg],
-        constraints
-      });
-
-      return {
-        composite, head, torso, leftArm, rightArm, leftLeg, rightLeg, scale,
-        isPlayer: !!options.isPlayer,
-        name: options.name || "Humanoid",
-        getHeadPos() { return head.position; },
-        setPosition(nx, ny) {
-          Composite.translate(composite, { x: nx - torso.position.x, y: ny - torso.position.y });
-        }
-      };
+      return { composite: Composite.create({ bodies: [head, torso, leftArm, rightArm, leftLeg, rightLeg], constraints }), head, torso, leftArm, rightArm, leftLeg, rightLeg, scale, constraints, ragdoll: false, ragdollTimer: 0, stun: 0, getHeadPos() { return head.position; }, setPosition(nx, ny) { Composite.translate(this.composite, { x: nx - torso.position.x, y: ny - torso.position.y }); } };
     }
-
-    function createSegmentedFish(x, y, typeKey) {
-      const def = CONFIG.fishTypes[typeKey] || CONFIG.fishTypes.safe_cod;
+    function createFish(x, y, typeKey) {
+      const def = CONFIG.fishTypes[typeKey];
+      const s = def.rare ? 4.0 : (0.75 + Math.random() * 0.55);
       const group = Body.nextGroup(true);
-      const segs = [];
-      const constraints = [];
-      const segW = def.length / def.segments;
-      const segH = 11;
-
-      for (let i = 0; i < def.segments; i++) {
-        const isHead = i === 0;
-        const body = Bodies.rectangle(
-          x + i * segW * 0.86, y,
-          isHead ? segW * 1.05 : segW,
-          isHead ? segH + 3 : segH,
-          {
-            label: isHead ? "fishHead" : "fishBody",
-            collisionFilter: { group },
-            render: { fillStyle: isHead ? shadeHex(def.color, -25) : def.color },
-            density: 0.0006,
-            frictionAir: 0.045
-          }
-        );
-        segs.push(body);
-        if (i > 0) {
-          constraints.push(Constraint.create({
-            bodyA: segs[i - 1], bodyB: body,
-            pointA: { x: segW * 0.4, y: 0 }, pointB: { x: -segW * 0.4, y: 0 },
-            stiffness: 0.88, damping: 0.12, length: 2
-          }));
+      const filter = { group, category: COL.fish, mask: COL.fish | COL.player | COL.gap | COL.world | COL.bell | COL.floor | COL.hook };
+      const hidden = { visible: false, anchors: false };
+      const segs = [], constraints = [], L = def.length * s, H = def.height * s, col = def.color;
+      function link(a, b, pa, pb) { constraints.push(Constraint.create({ bodyA: a, bodyB: b, pointA: { x: pa, y: 0 }, pointB: { x: pb, y: 0 }, stiffness: 0.28, damping: 0.12, length: 2, render: hidden })); }
+      if (def.shape === "puffer") {
+        const head = Bodies.circle(x, y, H * 0.55, { label: "fishHead", collisionFilter: filter, render: { fillStyle: col }, density: 0.0008, frictionAir: 0.18 });
+        const tail = Bodies.rectangle(x + H * 0.7, y, 8 * s, 10 * s, { label: "fishTail", collisionFilter: filter, render: { fillStyle: shadeHex(col, -35) }, density: 0.0003, frictionAir: 0.18 });
+        segs.push(head, tail); link(head, tail, H * 0.5, -4);
+      } else if (def.shape === "sole") {
+        const head = Bodies.rectangle(x, y, L * 0.4, H * 1.5, { label: "fishHead", collisionFilter: filter, render: { fillStyle: shadeHex(col, 12) }, density: 0.0008, frictionAir: 0.18 });
+        const mid = Bodies.rectangle(x + L * 0.28, y, L * 0.34, H, { label: "fishBody", collisionFilter: filter, render: { fillStyle: col }, density: 0.0006, frictionAir: 0.18 });
+        const tail = Bodies.rectangle(x + L * 0.5, y, L * 0.2, H * 0.85, { label: "fishTail", collisionFilter: filter, render: { fillStyle: shadeHex(col, -25) }, density: 0.0004, frictionAir: 0.18 });
+        segs.push(head, mid, tail); link(head, mid, L * 0.18, -L * 0.16); link(mid, tail, L * 0.16, -L * 0.08);
+      } else if (def.shape === "angler") {
+        const n = 9, segW = L / n, step = segW * 0.7;
+        for (let i = 0; i < n; i++) {
+          const body = Bodies.rectangle(x + i * step, y, segW * 1.15, H * (i === 0 ? 1.45 : 1 - i / n * 0.5), { label: i === 0 ? "fishHead" : "fishBody", collisionFilter: filter, render: { fillStyle: i === 0 ? "#3a3224" : col }, density: 0.0008, frictionAir: 0.16 });
+          segs.push(body); if (i > 0) link(segs[i - 1], body, step * 0.5, -step * 0.5);
         }
+        const jaw = Bodies.rectangle(x - 18 * s, y + 16 * s, 34 * s, 10 * s, { label: "fishJaw", collisionFilter: filter, render: { fillStyle: "#1a1610" }, density: 0.0004, frictionAir: 0.16 });
+        const toothL = Bodies.rectangle(x - 28 * s, y + 8 * s, 8 * s, 14 * s, { label: "fishTooth", collisionFilter: filter, render: { fillStyle: "#c8c0a8" }, density: 0.0002, frictionAir: 0.16 });
+        const toothR = Bodies.rectangle(x - 10 * s, y + 8 * s, 8 * s, 14 * s, { label: "fishTooth", collisionFilter: filter, render: { fillStyle: "#c8c0a8" }, density: 0.0002, frictionAir: 0.16 });
+        const lure = Bodies.circle(x - 46 * s, y - 34 * s, 10 * s, { label: "fishWeak", collisionFilter: filter, render: { fillStyle: "#e8d56a" }, density: 0.0002, frictionAir: 0.16 });
+        segs.push(jaw, toothL, toothR, lure);
+        link(segs[0], jaw, -segW * 0.45, 10); link(jaw, toothL, -12 * s, 0); link(jaw, toothR, 8 * s, 0); link(segs[0], lure, -segW * 0.7, 6);
+      } else {
+        const n = def.segments, segW = L / n, step = segW * 0.72;
+        for (let i = 0; i < n; i++) {
+          const body = Bodies.rectangle(x + i * step, y, segW, H * (i === 0 ? 1.12 : 1 - i / n * (def.shape === "eel" ? 0.35 : 0.18)), { label: i === 0 ? "fishHead" : "fishBody", collisionFilter: filter, render: { fillStyle: i === 0 ? shadeHex(col, 16) : col }, density: 0.0007, frictionAir: 0.18 });
+          segs.push(body); if (i > 0) link(segs[i - 1], body, step * 0.5, -step * 0.5);
+        }
+        const tail = Bodies.rectangle(x + n * step, y, 10 * s, H * (def.shape === "eel" ? 0.55 : 1.0), { label: "fishTail", collisionFilter: filter, render: { fillStyle: shadeHex(col, -28) }, density: 0.0003, frictionAir: 0.18 });
+        segs.push(tail); link(segs[segs.length - 2], tail, segW * 0.4, -6);
       }
-
-      const tail = Bodies.rectangle(x + def.segments * segW * 0.86, y, 10, 16, {
-        label: "fishTail", collisionFilter: { group },
-        render: { fillStyle: shadeHex(def.color, -35) }, density: 0.0003
-      });
-      constraints.push(Constraint.create({ bodyA: segs[segs.length - 1], bodyB: tail, stiffness: 0.55, length: 6 }));
-      segs.push(tail);
-
+      for (const seg of segs) { seg.ignoreGravity = true; seg.frictionAir = 0.04; }
+      const spaces = [];
+      for (let i = 1; i < segs.length; i++) spaces.push(Math.max(8, Math.hypot(segs[i].position.x - segs[i-1].position.x, segs[i].position.y - segs[i-1].position.y)));
       return {
-        composite: Composite.create({ bodies: segs, constraints }),
-        head: segs[0], segments: segs, typeKey, def,
-        alive: true, targetDir: Math.random() * Math.PI * 2,
-        aggression: def.aggression, speed: def.speed,
+        composite: Composite.create({ bodies: segs, constraints }), head: segs[0], segments: segs, spaces, typeKey, def, rawColor: col, waveT: 0,
+        alive: true, targetDir: Math.random() * Math.PI * 2, speed: def.speed * (0.9 + Math.random() * 0.25),
+        aggression: def.aggression, offMs: 0, cook: 0, attached: false, inBell: false,
+        hp: def.rare ? 10 : 1, critKill: false, slamCd: 1.2, cageLocked: false,
         update() {
           if (!this.alive) return;
-          if (Math.random() < 0.02) this.targetDir += (Math.random() - 0.5) * 1.1;
-          if (player) {
-            const dx = player.torso.position.x - this.head.position.x;
-            const dy = player.torso.position.y - this.head.position.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < 260) {
-              if (this.aggression > 0.5) this.targetDir = Math.atan2(dy, dx);
-              else if (this.aggression < 0.2) this.targetDir = Math.atan2(-dy, -dx);
-            }
+          for (const seg of this.segments) {
+            seg.ignoreGravity = true;
+            if (seg.velocity.y < 0) Body.setVelocity(seg, { x: seg.velocity.x, y: 0 });
           }
-          const force = 0.00022 * this.speed;
-          Body.applyForce(this.head, this.head.position, {
-            x: Math.cos(this.targetDir) * force,
-            y: Math.sin(this.targetDir) * force
-          });
-          Body.applyForce(this.head, this.head.position, { x: 0, y: -0.00003 });
+          const top = CONFIG.waterY + 100;
+          const bot = CONFIG.islandY + currentMaxDepth() + 40;
+          if (Math.random() < 0.03) this.targetDir += (Math.random() - 0.5) * 1.6;
+          if (this.head.position.y < top + 20) this.targetDir = 0.6 + Math.random() * 1.9;
+          if (this.head.position.y > bot - 40) this.targetDir = -0.6 - Math.random() * 1.9;
+          if (player && player.torso.position.y > CONFIG.waterY) {
+            const dx = player.torso.position.x - this.head.position.x, dy = player.torso.position.y - this.head.position.y;
+            const dist = Math.hypot(dx, dy);
+            if (this.def.rare) {
+              /* chase only happens in trySlam while charging */
+            } else if (dist < 230) this.targetDir = this.aggression > 0.5 ? Math.atan2(dy, dx) : Math.atan2(-dy, -dx);
+          }
+          let diff = this.targetDir - this.head.angle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          Body.setAngle(this.head, this.head.angle + diff * 0.12);
+          this.waveT = (this.waveT || 0) + 0.14;
+          const face = this.head.angle + Math.sin(this.waveT) * 0.18;
+          Body.setAngle(this.head, face);
+          const swim = 3.6 + this.speed * 2.4;
+          let svx = Math.cos(face) * swim, svy = Math.sin(face) * swim;
+          if (this.head.position.y < top + 8 && svy < 0) svy = Math.abs(svy);
+          Body.setVelocity(this.head, { x: svx, y: svy });
+          Body.setAngularVelocity(this.head, 0);
+          for (const c of this.composite.constraints) c.stiffness = 0.0001;
+          for (let i = 1; i < this.segments.length; i++) {
+            const seg = this.segments[i], lead = this.segments[i - 1];
+            const space = (this.spaces && this.spaces[i - 1]) || 14;
+            if (seg.label === "fishWeak" || seg.label === "fishJaw" || seg.label === "fishTooth") {
+              const sc = this.def.rare ? 4 : 1;
+              const off = seg.label === "fishWeak" ? [-46, -34] : seg.label === "fishJaw" ? [-18, 16] : (seg.position.x < this.head.position.x - 20 ? [-28, 8] : [-10, 8]);
+              const ox = off[0] * sc, oy = off[1] * sc;
+              Body.setPosition(seg, { x: this.head.position.x + Math.cos(face) * ox - Math.sin(face) * oy, y: this.head.position.y + Math.sin(face) * ox + Math.cos(face) * oy });
+              Body.setAngle(seg, face);
+              Body.setVelocity(seg, this.head.velocity);
+              Body.setAngularVelocity(seg, 0);
+              continue;
+            }
+            let dx = seg.position.x - lead.position.x, dy = seg.position.y - lead.position.y;
+            let d = Math.hypot(dx, dy);
+            if (d < 2) { dx = -Math.cos(face); dy = -Math.sin(face); d = 1; }
+            Body.setPosition(seg, { x: lead.position.x + dx / d * space, y: lead.position.y + dy / d * space });
+            Body.setAngle(seg, Math.atan2(lead.position.y - seg.position.y, lead.position.x - seg.position.x));
+            Body.setVelocity(seg, { x: 0, y: 0 });
+            Body.setAngularVelocity(seg, 0);
+          }
+          if (this.head.position.y < top) Body.setPosition(this.head, { x: this.head.position.x, y: top });
+          if (this.def.rare) this.trySlam();
         },
-        kill() {
-          this.alive = false;
-          for (const c of this.composite.constraints) c.stiffness = 0.14;
-        }
+        trySlam() {
+          if (!bell.floor || bell.mode === "docked") return;
+          this.slamCd = (this.slamCd || 0) - 0.016;
+          const c = bellCenter();
+          let nearest = 1e9;
+          for (const seg of this.segments) nearest = Math.min(nearest, Math.hypot(seg.position.x - c.x, seg.position.y - c.y));
+          if (this.slamCd > 1.2) {
+            if (nearest < 280) this.targetDir = Math.atan2(this.head.position.y - c.y, this.head.position.x - c.x);
+            return;
+          }
+          this.targetDir = Math.atan2(c.y - this.head.position.y, c.x - this.head.position.x);
+          if (this.slamCd <= 0 && nearest < 340) {
+            this.slamCd = 4;
+            const dirx = Math.sign(this.head.position.x - c.x) || 1;
+            bell.pendV += dirx * 320;
+            bell.pendX += dirx * 18;
+            bell.shakeT = 0.7;
+            this.targetDir = Math.atan2(this.head.position.y - c.y, this.head.position.x - c.x);
+            if (playerInsideBell()) { setRagdoll(true, 1.6); player.stun = 1.2; showToast("The cage was rammed.", "Cage"); }
+          }
+        },
+        setMask(mask) { for (const seg of this.segments) seg.collisionFilter.mask = mask; },
+        kill() { this.alive = false; for (const c of this.composite.constraints) c.stiffness = 0.2; for (const seg of this.segments) { seg.ignoreGravity = true; Body.setAngularVelocity(seg, 0); } this.setMask(HAUL_MASK); }
       };
     }
-
-    function steel(fill) {
-      return { isStatic: true, render: { fillStyle: fill || "#2a3036" }, friction: 0.8 };
+    const SPAWN_POOL = ["safe_cod","safe_cod","haddock","haddock","mackerel","mackerel","sea_bass","pollock","passive_sole","passive_sole","aggressive_barracuda","conger_eel","toxic_puffer","lionfish","stonefish","oilfish","bluefin","opah","king_salmon"];
+    function spawnFishAtEdge(forcedType) {
+      const type = forcedType || SPAWN_POOL[Math.floor(Math.random() * SPAWN_POOL.length)];
+      const b = render && render.bounds ? render.bounds : { min: { x: CONFIG.worldX - 400, y: CONFIG.waterY + 200 }, max: { x: CONFIG.worldX + 400, y: CONFIG.islandY + 800 } };
+      const top = CONFIG.waterY + 110, bot = CONFIG.islandY + currentMaxDepth() + 80;
+      let viewTop = Math.max(top, b.min.y);
+      let viewBot = Math.min(bot, b.max.y);
+      if (viewBot - viewTop < 160) { viewTop = top; viewBot = Math.min(bot, top + 500); }
+      const band = Math.random();
+      let y;
+      if (band < 0.35) y = viewTop + Math.random() * Math.max(40, viewBot - viewTop);
+      else if (band < 0.7) y = Math.min(bot - 20, viewBot + Math.random() * 220);
+      else y = top + Math.random() * Math.max(120, (viewBot + 180) - top);
+      y = Math.max(top, Math.min(bot - 10, y));
+      const side = Math.random();
+      let x, dir;
+      if (side < 0.45) { x = b.min.x - 170; dir = 0; y = viewTop + 40 + Math.random() * Math.max(60, viewBot - viewTop - 40); }
+      else if (side < 0.9) { x = b.max.x + 170; dir = Math.PI; y = viewTop + 40 + Math.random() * Math.max(60, viewBot - viewTop - 40); }
+      else { x = b.min.x + 90 + Math.random() * Math.max(40, b.max.x - b.min.x - 180); y = viewBot + 150; dir = Math.PI / 2; }
+      const fish = createFish(x, y, type);
+      fish.targetDir = dir;
+      Body.setAngle(fish.head, dir);
+      const kick = 3.6;
+      for (const seg of fish.segments) Body.setVelocity(seg, { x: Math.cos(dir) * kick, y: Math.max(0.2, Math.sin(dir) * kick) });
+      EntityRegistry.register(fish); return fish;
     }
-
+    function trySpawnAngler() {
+      if (anglerThisDive) return;
+      anglerThisDive = true;
+      if (!DEBUG_ANGLER_EVERY_DIVE) {
+        if (upgrades.depth < UPGRADE_MAX) return;
+        if (Math.random() > 0.2) return;
+      }
+      const b = render.bounds;
+      const left = Math.random() < 0.5;
+      const x = left ? b.min.x - 520 : b.max.x + 520;
+      const y = bellCenter().y + (Math.random() - 0.5) * 40;
+      const angler = createFish(x, y, "deep_angler");
+      angler.targetDir = left ? 0 : Math.PI;
+      Body.setAngle(angler.head, angler.targetDir);
+      EntityRegistry.register(angler);
+      showToast("Something big moved in the dark.", "Cage");
+    }
+    function maintainFish(dt) {
+      if (!render) return; const view = render.bounds;
+      for (const e of EntityRegistry.entities.filter(f => f.def && f.alive)) {
+        const p = e.head.position;
+        const on = p.x > view.min.x - 60 && p.x < view.max.x + 60 && p.y > view.min.y - 60 && p.y < view.max.y + 60;
+        e.offMs = on ? 0 : e.offMs + dt;
+        if (e.offMs > 12 && !e.def.rare) EntityRegistry.remove(e);
+      }
+      const live = EntityRegistry.entities.filter(f => f.def && f.alive && !f.def.rare).length;
+      if (live < 10) spawnFishAtEdge();
+      if (live < 8 && Math.random() < 0.4) spawnFishAtEdge();
+    }
+    function steel(fill, extra) { return Object.assign({ isStatic: true, render: { fillStyle: fill || "#2a3036" }, friction: 0.8, collisionFilter: { category: COL.bell, mask: COL.world | COL.player | COL.fish } }, extra || {}); }
     function createDivingBell(cx, cy) {
-      const w = 118;
-      const h = 148;
-      const t = 10;
-      const doorH = 92;
-      const lintelH = 28;
-      const sillH = 18;
-      const floor = Bodies.rectangle(cx, cy + h / 2 - t / 2, w, t, Object.assign(steel("#3a4148"), { label: "bellFloor" }));
-      const roof = Bodies.rectangle(cx, cy - h / 2 + t / 2, w, t, Object.assign(steel("#32383e"), { label: "bellRoof" }));
-      const leftTop = Bodies.rectangle(cx - w / 2 + t / 2, cy - h / 2 + lintelH / 2 + t, t, lintelH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
-      const rightTop = Bodies.rectangle(cx + w / 2 - t / 2, cy - h / 2 + lintelH / 2 + t, t, lintelH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
-      const leftSill = Bodies.rectangle(cx - w / 2 + t / 2, cy + h / 2 - sillH / 2 - t / 2, t, sillH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
-      const rightSill = Bodies.rectangle(cx + w / 2 - t / 2, cy + h / 2 - sillH / 2 - t / 2, t, sillH, Object.assign(steel("#2c3238"), { label: "bellWall" }));
-      const leftDoor = Bodies.rectangle(cx - w / 2 + t / 2, cy + 10, t, doorH, Object.assign(steel("#5a4330"), { label: "bellDoor" }));
-      const rightDoor = Bodies.rectangle(cx + w / 2 - t / 2, cy + 10, t, doorH, Object.assign(steel("#5a4330"), { label: "bellDoor" }));
-      const hook = Bodies.rectangle(cx, cy - h / 2 - 14, 14, 20, Object.assign(steel("#4a5158"), { label: "bellHook" }));
-      const lamp = Bodies.rectangle(cx, cy - h / 2 + 18, 16, 8, Object.assign(steel("#6b4e1e"), { label: "bellLamp" }));
-
-      const parts = [floor, roof, leftTop, rightTop, leftSill, rightSill, leftDoor, rightDoor, hook, lamp];
-      bell.parts = parts;
-      bell.walls = [floor, roof, leftTop, rightTop, leftSill, rightSill, leftDoor, rightDoor];
-      bell.floor = floor;
-      bell.roof = roof;
-      bell.doors = [
-        {
-          body: leftDoor,
-          closed: { x: leftDoor.position.x, y: leftDoor.position.y },
-          open: { x: leftDoor.position.x - 26, y: leftDoor.position.y - 86 }
-        },
-        {
-          body: rightDoor,
-          closed: { x: rightDoor.position.x, y: rightDoor.position.y },
-          open: { x: rightDoor.position.x + 26, y: rightDoor.position.y - 86 }
-        }
-      ];
-      bell.park = { x: cx, y: cy };
-      setDoorOpen(true);
-      return parts;
+      const w = 118, h = 148, t = 10, doorH = 92;
+      const floor = Bodies.rectangle(cx, cy + h / 2 - t / 2, w, t, steel("#3a4148", { label: "bellFloor", collisionFilter: { category: COL.bell | COL.floor, mask: COL.world | COL.player | COL.fish } }));
+      const roof = Bodies.rectangle(cx, cy - h / 2 + t / 2, w, t, steel("#32383e", { label: "bellRoof" }));
+      const leftTop = Bodies.rectangle(cx - w / 2 + t / 2, cy - h / 2 + 22, t, 28, steel("#2c3238", { label: "bellWall" }));
+      const rightTop = Bodies.rectangle(cx + w / 2 - t / 2, cy - h / 2 + 22, t, 28, steel("#2c3238", { label: "bellWall" }));
+      const leftSill = Bodies.rectangle(cx - w / 2 + t / 2, cy + h / 2 - 14, t, 18, steel("#2c3238", { label: "bellWall" }));
+      const rightSill = Bodies.rectangle(cx + w / 2 - t / 2, cy + h / 2 - 14, t, 18, steel("#2c3238", { label: "bellWall" }));
+      const leftDoor = Bodies.rectangle(cx - w / 2 + t / 2, cy + 10, t, doorH, steel("#5a4330", { label: "bellDoor" }));
+      const rightDoor = Bodies.rectangle(cx + w / 2 - t / 2, cy + 10, t, doorH, steel("#5a4330", { label: "bellDoor" }));
+      const hook = Bodies.rectangle(cx, cy - h / 2 - 14, 14, 20, steel("#4a5158", { label: "bellHook" }));
+      const lamp = Bodies.rectangle(cx, cy - h / 2 + 18, 16, 8, steel("#6b4e1e", { label: "bellLamp" }));
+      bell.parts = [floor, roof, leftTop, rightTop, leftSill, rightSill, leftDoor, rightDoor, hook, lamp];
+      bell.floor = floor; bell.roof = roof; bell.hook = hook;
+      bell.doors = [{ body: leftDoor, closed: { x: leftDoor.position.x, y: leftDoor.position.y } }, { body: rightDoor, closed: { x: rightDoor.position.x, y: rightDoor.position.y } }];
+      bell.park = { x: cx, y: cy }; setDoorOpen(true); return bell.parts;
     }
-
-    function bellCenter() {
-      return bell.floor ? { x: bell.floor.position.x, y: bell.floor.position.y - 68 } : { x: CONFIG.width / 2, y: CONFIG.islandY };
-    }
-
-    function translateBell(dx, dy) {
-      for (const part of bell.parts) {
-        Body.setPosition(part, { x: part.position.x + dx, y: part.position.y + dy });
-        Body.setVelocity(part, { x: 0, y: 0 });
-      }
-      for (const d of bell.doors) {
-        d.closed.x += dx; d.closed.y += dy;
-        d.open.x += dx; d.open.y += dy;
-      }
-    }
-
-    function setDoorOpen(open) {
-      bell.doorOpen = open;
-      for (const d of bell.doors) {
-        const target = open ? d.open : d.closed;
-        Body.setPosition(d.body, { x: target.x, y: target.y });
-        Body.setVelocity(d.body, { x: 0, y: 0 });
-      }
-    }
-
-    function playerInsideBell() {
-      if (!player || !bell.floor) return false;
-      const c = bellCenter();
-      const p = player.torso.position;
-      return Math.abs(p.x - c.x) < 46 && p.y < bell.floor.position.y - 8 && p.y > bell.roof.position.y + 8;
-    }
-
+    function bellCenter() { return bell.floor ? { x: bell.floor.position.x, y: bell.floor.position.y - 68 } : { x: CONFIG.worldX, y: CONFIG.islandY }; }
+    function translateBell(dx, dy) { for (const part of bell.parts) { Body.setPosition(part, { x: part.position.x + dx, y: part.position.y + dy }); Body.setVelocity(part, { x: 0, y: 0 }); } for (const d of bell.doors) { d.closed.x += dx; d.closed.y += dy; } }
+    function setDoorOpen(open) { bell.doorOpen = open; for (const d of bell.doors) { Body.setPosition(d.body, { x: d.closed.x, y: d.closed.y }); d.body.render.visible = !open; d.body.collisionFilter.mask = open ? 0 : (COL.world | COL.player | COL.fish); } }
+    function playerInsideBell() { if (!player || !bell.floor) return false; const c = bellCenter(), p = player.torso.position; return Math.abs(p.x - c.x) < 46 && p.y < bell.floor.position.y - 8 && p.y > bell.roof.position.y + 8; }
     function carryPlayerWithBell(dx, dy) {
-      if (!player) return;
       Composite.translate(player.composite, { x: dx, y: dy });
-      for (const b of player.composite.bodies) Body.setVelocity(b, { x: b.velocity.x, y: 0 });
     }
-
+    function keepPlayerInBell() {
+      if (!player || !bell.floor) return; if (bell.doorOpen && bell.mode === "docked") return;
+      const c = bellCenter(), p = player.torso.position; if (bell.doorOpen && Math.abs(p.x - c.x) >= 52) return;
+      const maxY = bell.floor.position.y - 16, minY = bell.roof.position.y + 18; let nx = p.x, ny = p.y;
+      if (!bell.doorOpen) nx = Math.max(c.x - 38, Math.min(c.x + 38, p.x));
+      if (p.y > maxY + 20) ny = maxY;
+      if (p.y < minY) ny = minY;
+      if (nx !== p.x || ny !== p.y) player.setPosition(nx, ny);
+    }
+    function carryBellCargo(dx, dy) { for (const e of EntityRegistry.entities) if (e.def && (e.inBell || e.attached)) Composite.translate(e.composite, { x: dx, y: dy }); }
+    function setRagdoll(on, seconds) { player.ragdoll = on; player.ragdollTimer = on ? (seconds || 2.8) : 0; for (const c of player.constraints) c.stiffness = on ? 0.08 : 0.95; }
+    function standPose() { if (!player || player.ragdoll) return; for (const b of [player.head, player.torso, player.leftArm, player.rightArm, player.leftLeg, player.rightLeg]) { Body.setAngularVelocity(b, b.angularVelocity * 0.6); Body.setAngle(b, b.angle * 0.72); } }
     function createIsland() {
-      const ground = Bodies.rectangle(CONFIG.width / 2, CONFIG.islandY + 58, 820, 84, {
-        isStatic: true, label: "island",
-        render: { fillStyle: "#18241c" }
-      });
-      const cliffL = Bodies.rectangle(CONFIG.width / 2 - 430, CONFIG.islandY + 10, 70, 180, {
-        isStatic: true, render: { fillStyle: "#12181c" }
-      });
-      const cliffR = Bodies.rectangle(CONFIG.width / 2 + 430, CONFIG.islandY + 10, 70, 180, {
-        isStatic: true, render: { fillStyle: "#12181c" }
-      });
-      return [ground, cliffL, cliffR];
+      const cx = CONFIG.worldX, gy = CONFIG.islandY + 58, gap = SHAFT_HALF * 2, slabW = 340;
+      const groundFilter = { category: COL.world, mask: COL.player | COL.fish };
+      const left = Bodies.rectangle(cx - gap / 2 - slabW / 2, gy, slabW, 84, { isStatic: true, label: "island", collisionFilter: groundFilter, render: { fillStyle: "#18241c" } });
+      const right = Bodies.rectangle(cx + gap / 2 + slabW / 2, gy, slabW, 84, { isStatic: true, label: "island", collisionFilter: groundFilter, render: { fillStyle: "#18241c" } });
+      const ghost = Bodies.rectangle(cx, gy, gap, 84, { isStatic: true, label: "shaftGhost", collisionFilter: { category: COL.gap, mask: COL.fish }, render: { fillStyle: "#0a1210" } });
+      const waterLid = Bodies.rectangle(cx, CONFIG.waterY + 6, CONFIG.width + 800, 14, { isStatic: true, label: "waterLid", collisionFilter: { category: COL.gap, mask: COL.fish }, render: { visible: false } });
+      const lipL = Bodies.rectangle(cx - gap / 2 - 6, gy - 18, 12, 48, { isStatic: true, label: "island", collisionFilter: groundFilter, render: { fillStyle: "#101810" } });
+      const lipR = Bodies.rectangle(cx + gap / 2 + 6, gy - 18, 12, 48, { isStatic: true, label: "island", collisionFilter: groundFilter, render: { fillStyle: "#101810" } });
+      const pad = { isStatic: true, label: "island", collisionFilter: { category: COL.gap, mask: COL.player }, render: { fillStyle: "#0c1410" } };
+      return [left, right, ghost, waterLid, lipL, lipR, Bodies.rectangle(cx - gap / 2 + 14, CONFIG.islandY + 18, 28, 22, pad), Bodies.rectangle(cx + gap / 2 - 14, CONFIG.islandY + 18, 28, 22, pad), Bodies.rectangle(cx - gap / 2 - slabW - 20, CONFIG.islandY + 10, 50, 180, { isStatic: true, collisionFilter: groundFilter, render: { fillStyle: "#12181c" } }), Bodies.rectangle(cx + gap / 2 + slabW + 20, CONFIG.islandY + 10, 50, 180, { isStatic: true, collisionFilter: groundFilter, render: { fillStyle: "#12181c" } })];
     }
-
+    function createCrane() {
+      const cx = CONFIG.worldX, deck = CONFIG.islandY, bg = { isStatic: true, collisionFilter: { mask: 0 } };
+      const winch = Bodies.rectangle(cx, deck - 148, 28, 22, Object.assign({}, bg, { label: "winch", render: { fillStyle: "#1a1810" } })); bell.winch = winch;
+      return [Bodies.rectangle(cx - 70, deck - 70, 16, 150, Object.assign({}, bg, { render: { fillStyle: "#101214" } })), Bodies.rectangle(cx + 70, deck - 70, 16, 150, Object.assign({}, bg, { render: { fillStyle: "#101214" } })), Bodies.rectangle(cx, deck - 148, 180, 16, Object.assign({}, bg, { render: { fillStyle: "#14161a" } })), Bodies.rectangle(cx - 40, deck - 118, 10, 70, Object.assign({}, bg, { render: { fillStyle: "#0e1012" } })), Bodies.rectangle(cx + 40, deck - 118, 10, 70, Object.assign({}, bg, { render: { fillStyle: "#0e1012" } })), winch];
+    }
     const keys = {};
-    window.addEventListener("keydown", e => {
-      keys[e.code] = true;
-      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
-    });
-    window.addEventListener("keyup", e => {
-      keys[e.code] = false;
-      if (e.code === "Space") jumpLocked = false;
-    });
-
+    window.addEventListener("keydown", e => { keys[e.code] = true; if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault(); });
+    window.addEventListener("keyup", e => { keys[e.code] = false; if (e.code === "Space") jumpLocked = false; });
     const mouse = { x: 0, y: 0, down: false, right: false };
-    window.addEventListener("mousemove", e => {
-      if (!render) return;
-      const rect = render.canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-    });
-    window.addEventListener("mousedown", e => {
-      if (e.button === 0) mouse.down = true;
-      if (e.button === 2) mouse.right = true;
-    });
-    window.addEventListener("mouseup", e => {
-      if (e.button === 0) mouse.down = false;
-      if (e.button === 2) mouse.right = false;
-    });
+    window.addEventListener("mousemove", e => { if (!render) return; const rect = render.canvas.getBoundingClientRect(); mouse.x = e.clientX - rect.left; mouse.y = e.clientY - rect.top; });
+    window.addEventListener("mousedown", e => { if (e.button === 0) mouse.down = true; if (e.button === 2) mouse.right = true; });
+    window.addEventListener("mouseup", e => { if (e.button === 0) mouse.down = false; if (e.button === 2) mouse.right = false; });
     window.addEventListener("contextmenu", e => e.preventDefault());
-
+    function worldMouse() {
+      const rect = render.canvas.getBoundingClientRect();
+      const nx = rect.width ? (mouse.x / rect.width) : 0.5;
+      const ny = rect.height ? (mouse.y / rect.height) : 0.5;
+      return {
+        x: render.bounds.min.x + nx * (render.bounds.max.x - render.bounds.min.x),
+        y: render.bounds.min.y + ny * (render.bounds.max.y - render.bounds.min.y)
+      };
+    }
     function shootHarpoon() {
       if (harpoon || !player || bell.mode === "docked") return;
-      const head = player.head.position;
-      const worldMouse = {
-        x: mouse.x + camera.x - CONFIG.width / 2,
-        y: mouse.y + camera.y - CONFIG.height / 2
-      };
-      const dx = worldMouse.x - head.x;
-      const dy = worldMouse.y - head.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const dir = { x: dx / len, y: dy / len };
-
-      harpoon = Bodies.rectangle(head.x + dir.x * 26, head.y + dir.y * 26, 26, 5, {
-        label: "harpoon", density: 0.002, frictionAir: 0.012,
-        render: { fillStyle: "#8a9096" }
-      });
-      Body.setVelocity(harpoon, { x: dir.x * CONFIG.harpoonSpeed, y: dir.y * CONFIG.harpoonSpeed });
-      Body.setAngle(harpoon, Math.atan2(dir.y, dir.x));
-      harpoonConstraint = Constraint.create({
-        bodyA: player.rightArm, bodyB: harpoon,
-        stiffness: 0.0001, length: 36,
-        render: { strokeStyle: "#6a7076", lineWidth: 2, type: "line" }
-      });
+      const from = player.head.position, aim = worldMouse();
+      const dx = aim.x - from.x, dy = aim.y - from.y, len = Math.hypot(dx, dy) || 1;
+      const dir = { x: dx / len, y: dy / len }, shot = CONFIG.harpoonSpeed + upgrades.speed * 6;
+      harpoon = Bodies.rectangle(from.x + dir.x * 70, from.y + dir.y * 70, 30, 5, { label: "harpoon", density: 0.0012, frictionAir: 0.08, collisionFilter: { category: COL.hook, mask: COL.fish | COL.world }, render: { fillStyle: "#8a9096" } });
+      spearDir = dir; Body.setVelocity(harpoon, { x: dir.x * shot, y: dir.y * shot }); Body.setAngularVelocity(harpoon, 0); Body.setAngle(harpoon, Math.atan2(dir.y, dir.x));
+      harpoonConstraint = Constraint.create({ bodyA: player.rightArm, bodyB: harpoon, stiffness: 0.00001, damping: 0, length: 80, render: { strokeStyle: "#6a7076", lineWidth: 2, type: "line", anchors: false } });
       Composite.add(world, [harpoon, harpoonConstraint]);
     }
-
-    function reelHarpoon() {
-      if (!harpoon || !harpoonConstraint) return;
-      reelActive = true;
-      harpoonConstraint.stiffness = 0.045;
-    }
-
     function releaseHarpoon() {
-      if (harpoon) Composite.remove(world, harpoon);
-      if (harpoonConstraint) Composite.remove(world, harpoonConstraint);
-      harpoon = null;
-      harpoonConstraint = null;
-      reelActive = false;
+      for (const j of hookJoints) Composite.remove(world, j);
+      if (harpoon) Composite.remove(world, harpoon); if (harpoonConstraint) Composite.remove(world, harpoonConstraint);
+      for (const f of hookedFish) f.attached = false;
+      harpoon = null; harpoonConstraint = null; hookJoints = []; hookedFish = []; reelActive = false; spearDir = null;
     }
-
     function setupCollisions() {
-      Events.on(engine, "collisionStart", event => {
-        for (const pair of event.pairs) {
+      Events.on(engine, "collisionStart", ev => {
+        for (const pair of ev.pairs) {
           const labels = [pair.bodyA.label, pair.bodyB.label];
-          if (labels.includes("harpoon") && (labels.includes("fishHead") || labels.includes("fishBody"))) {
+          if (labels.includes("harpoon") && labels.includes("rock") && harpoon) {
+            const n = pair.collision.normal;
+            const v = harpoon.velocity;
+            const dot = v.x * n.x + v.y * n.y;
+            Body.setVelocity(harpoon, { x: (v.x - 2 * dot * n.x) * 0.7, y: (v.y - 2 * dot * n.y) * 0.7 });
+            spearDir = Vector.normalise(harpoon.velocity);
+            Body.setAngle(harpoon, Math.atan2(harpoon.velocity.y, harpoon.velocity.x));
+          }
+          if (labels.includes("harpoon") && (String(labels[0]).startsWith("fish") || String(labels[1]).startsWith("fish"))) {
             const fishBody = String(pair.bodyA.label).startsWith("fish") ? pair.bodyA : pair.bodyB;
             const fishEnt = EntityRegistry.entities.find(e => e.segments && e.segments.includes(fishBody));
-            if (fishEnt && fishEnt.alive) {
-              fishEnt.kill();
-              if (harpoonConstraint) {
-                harpoonConstraint.bodyB = fishBody;
-                harpoonConstraint.stiffness = 0.6;
-                harpoonConstraint.length = 8;
+            if (fishEnt && fishEnt.alive && hookedFish.indexOf(fishEnt) < 0 && harpoon && harpoon.struck !== fishEnt) {
+              harpoon.struck = fishEnt;
+              const weak = fishBody.label === "fishWeak";
+              const headshot = !fishEnt.def.rare && fishBody.label === "fishHead" && Math.random() < 0.35;
+              const crit = weak || headshot;
+              const dmg = weak ? 2 : 1;
+              spawnBlood(fishBody.position.x, fishBody.position.y, harpoon ? harpoon.velocity : { x: 0, y: 0 }, crit);
+              fishEnt.hp -= dmg;
+              if (fishEnt.hp <= 0) {
+                if (fishEnt.def.rare) fishEnt.critKill = !!crit;
+                else if (crit) fishEnt.critKill = true;
+                fishEnt.kill(); fishEnt.attached = true; hookedFish.push(fishEnt); fishEnt.setMask(HAUL_MASK);
+                const joint = Constraint.create({ bodyA: harpoon, bodyB: fishBody, stiffness: 0.22, damping: 0.4, length: 10 + hookedFish.length * 6, render: { visible: false } });
+                hookJoints.push(joint); Composite.add(world, joint);
+              } else {
+                Body.setVelocity(fishEnt.head, { x: fishEnt.head.velocity.x + (harpoon.velocity.x || 0) * 0.15, y: fishEnt.head.velocity.y + (harpoon.velocity.y || 0) * 0.15 });
               }
-              fishEnt.attached = true;
             }
           }
         }
       });
-
-      Events.on(engine, "collisionActive", event => {
+      Events.on(engine, "collisionActive", ev => {
         grounded = false;
-        for (const pair of event.pairs) {
-          const a = pair.bodyA.label;
-          const b = pair.bodyB.label;
-          const hitLeg = a === "leftLeg" || a === "rightLeg" || b === "leftLeg" || b === "rightLeg" || a === "torso" || b === "torso";
-          const hitGround = a === "island" || b === "island" || a === "bellFloor" || b === "bellFloor";
-          if (hitLeg && hitGround) grounded = true;
+        for (const pair of ev.pairs) {
+          const a = pair.bodyA.label, b = pair.bodyB.label;
+          const leg = a === "leftLeg" || a === "rightLeg" || b === "leftLeg" || b === "rightLeg" || a === "torso" || b === "torso";
+          const gnd = a === "island" || b === "island" || a === "bellFloor" || b === "bellFloor";
+          if (leg && gnd) grounded = true;
         }
       });
     }
-
-    function tryCollectFish() {
-      if (!harpoon || bell.mode === "docked") return;
+    function packFishInBell(fish, slot) {
+      const c = bellCenter(), floorY = bell.floor.position.y, n = fish.segments.length, ox = (slot % 2 === 0 ? -1 : 1) * (10 + slot * 6);
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1);
+        Body.setPosition(fish.segments[i], { x: c.x + ox + Math.sin(t * Math.PI * 1.6) * 12, y: floorY - 20 - Math.cos(t * Math.PI) * 8 - (i % 2) * 5 });
+        Body.setVelocity(fish.segments[i], { x: 0, y: 0 }); Body.setAngularVelocity(fish.segments[i], 0); Body.setAngle(fish.segments[i], (t - 0.5) * 0.9);
+      }
+    }
+    function layoutAnglerInCage(fish) {
       const c = bellCenter();
-      for (const e of [...EntityRegistry.entities]) {
-        if (e.def && !e.alive && e.attached) {
-          const headPos = e.head.position;
-          if (Math.abs(headPos.y - c.y) < 120 && Math.abs(headPos.x - c.x) < 110) {
-            cageInventory.push({
-              typeKey: e.typeKey, name: e.def.name, edible: e.def.edible,
-              prepRequired: e.def.prepRequired, risk: e.def.risk
-            });
-            EntityRegistry.remove(e);
-            releaseHarpoon();
-            updateCageUI();
-            showToast("Hauled " + e.def.name + " into the bell.");
-          }
-        }
+      const spine = fish.segments.filter(s => s.label === "fishHead" || s.label === "fishBody");
+      const mid = Math.floor(spine.length / 2);
+      const space = 18;
+      for (let i = 0; i < spine.length; i++) {
+        Body.setPosition(spine[i], { x: c.x + (i - mid) * space, y: c.y });
+        Body.setAngle(spine[i], 0);
+        Body.setVelocity(spine[i], { x: 0, y: 0 });
+        Body.setAngularVelocity(spine[i], 0);
+      }
+      const extras = fish.segments.filter(s => s.label === "fishJaw" || s.label === "fishTooth" || s.label === "fishWeak");
+      for (const seg of extras) {
+        Body.setPosition(seg, { x: c.x, y: c.y + (seg.label === "fishWeak" ? -16 : 14) });
+        Body.setVelocity(seg, { x: 0, y: 0 });
       }
     }
-
-    function updateCageUI() {
-      const el = document.getElementById("cage-inventory");
-      el.innerHTML = "";
-      cageInventory.forEach((item, i) => {
-        const slot = document.createElement("div");
-        slot.className = "inventory-slot bg-zinc-950 border border-stone-700 flex flex-col items-center justify-center text-xs p-1 cursor-pointer hover:border-amber-800";
-        slot.innerHTML = '<div class="w-8 h-5" style="background:' + ((CONFIG.fishTypes[item.typeKey] && CONFIG.fishTypes[item.typeKey].color) || "#444") + '"></div><span class="truncate max-w-[56px]">' + item.name.split(" ").pop() + "</span>";
-        slot.onclick = () => openPrepModal(i);
-        el.appendChild(slot);
+    function dropHookedFish() {
+      hookedFish.slice().forEach((fish, i) => {
+        fish.attached = false; fish.inBell = true;
+        if (fish.def.rare) {
+          fish.cageLocked = true;
+          fish.setMask(COL.player | COL.floor);
+          layoutAnglerInCage(fish);
+        } else {
+          packFishInBell(fish, i); fish.setMask(DEAD_MASK);
+        }
       });
+      hookedFish = []; releaseHarpoon();
     }
-
-    function showToast(msg) {
+    function showToast(msg, speaker) {
       const panel = document.getElementById("dialogue-panel");
-      document.getElementById("dialogue-speaker").textContent = "Bell";
-      document.getElementById("dialogue-text").textContent = msg;
-      document.getElementById("dialogue-choices").innerHTML = "";
-      panel.classList.remove("hidden");
-      setTimeout(() => panel.classList.add("hidden"), 2200);
+      document.getElementById("dialogue-speaker").textContent = speaker || "";
+      document.getElementById("dialogue-text").textContent = msg; document.getElementById("dialogue-choices").innerHTML = "";
+      panel.classList.remove("hidden"); setTimeout(() => panel.classList.add("hidden"), 2200);
     }
-
-    function openPrepModal(index) {
-      selectedFishForPrep = index;
-      const item = cageInventory[index];
-      document.getElementById("prep-desc").textContent =
-        "You are preparing: " + item.name + ". Correct preparation and identification decide whether the Chef stays healthy.";
-      document.getElementById("prep-clean").checked = false;
-      document.getElementById("prep-cook").checked = false;
-      document.getElementById("prep-identify").checked = false;
-      document.getElementById("prep-result").classList.add("hidden");
-      document.getElementById("prep-modal").classList.remove("hidden");
-      document.getElementById("prep-modal").classList.add("flex");
-    }
-
-    document.getElementById("prep-cancel").onclick = () => {
-      document.getElementById("prep-modal").classList.add("hidden");
-      document.getElementById("prep-modal").classList.remove("flex");
-    };
-
-    document.getElementById("prep-confirm").onclick = () => {
-      if (selectedFishForPrep == null) return;
-      const item = cageInventory[selectedFishForPrep];
-      const cleaned = document.getElementById("prep-clean").checked;
-      const cooked = document.getElementById("prep-cook").checked;
-      const identified = document.getElementById("prep-identify").checked;
-      let correct = true;
-      let message = "";
-      if (!item.edible) {
-        if (identified) {
-          correct = false;
-          message = "Chef is violently ill. This species is not safe for humans.";
-        } else {
-          message = "You rejected the toxic fish. Chef is safe.";
-        }
-      } else {
-        const needsId = item.prepRequired.indexOf("identify") !== -1;
-        if (!cleaned || !cooked || (needsId && !identified)) {
-          correct = false;
-          message = "Chef feels unwell. A preparation step was missed.";
-        } else {
-          message = "Safe meal. Chef stays healthy.";
-        }
-      }
-      const resultEl = document.getElementById("prep-result");
-      resultEl.textContent = message;
-      resultEl.className = "mt-3 text-sm " + (correct ? "text-emerald-500" : "text-red-500");
-      resultEl.classList.remove("hidden");
-      setTimeout(() => {
-        cageInventory.splice(selectedFishForPrep, 1);
-        updateCageUI();
-        document.getElementById("prep-modal").classList.add("hidden");
-        document.getElementById("prep-modal").classList.remove("flex");
-        selectedFishForPrep = null;
-        showToast(correct ? "Correct preparation." : "Review the preparation steps.");
-      }, 2400);
-    };
-
-    function createNPC(x, y, name, dialogueLines, options) {
-      const hum = createHumanoid(x, y, 0.5, Object.assign({ name: name, shirt: "#3a2a20" }, options || {}));
+    function createNPC(x, y, name, line, options) {
+      const hum = createHumanoid(x, y, 0.5, Object.assign({ name, npc: true }, options || {}));
       for (const b of hum.composite.bodies) Body.setStatic(b, true);
-      return {
-        composite: hum.composite, head: hum.head, torso: hum.torso,
-        dialogue: dialogueLines,
-        interact() { showDialogue(name, dialogueLines); }
-      };
+      return { composite: hum.composite, head: hum.head, torso: hum.torso };
     }
-
-    function showDialogue(speaker, lines) {
+    function mixHex(a, b, t) {
+      t = Math.max(0, Math.min(1, t));
+      const pa = parseInt(String(a).replace("#", ""), 16), pb = parseInt(String(b).replace("#", ""), 16);
+      const ra = (pa >> 16) & 255, ga = (pa >> 8) & 255, ba = pa & 255, rb = (pb >> 16) & 255, gb = (pb >> 8) & 255, bb = pb & 255;
+      return "#" + ((1 << 24) + ((ra + (rb - ra) * t) << 16) + ((ga + (gb - ga) * t) << 8) + (ba + (bb - ba) * t | 0)).toString(16).slice(1);
+    }
+    function pinLockedAnglers() {
+      for (const e of EntityRegistry.entities) {
+        if (!e.def || !e.cageLocked) continue;
+        if (bell.mode === "docked") {
+          e.cageLocked = false;
+          for (const seg of e.segments) seg.ignoreGravity = false;
+          e.setMask(DEAD_MASK);
+          continue;
+        }
+        layoutAnglerInCage(e);
+      }
+    }
+    function updateFishWorld(dt) {
+      if (!grill) return;
+      for (const e of [...EntityRegistry.entities]) {
+        if (!e.def || e.alive) continue; e.setMask(e.attached ? HAUL_MASK : DEAD_MASK);
+        const onGrill = Math.abs(e.head.position.x - grill.position.x) < 40 && Math.abs(e.head.position.y - grill.position.y) < 36;
+        if (onGrill) {
+          e.cook += dt * 0.28;
+          const col = e.cook <= 1 ? mixHex(e.rawColor, "#c48a32", e.cook) : mixHex("#c48a32", "#0a0a0a", Math.min(1, e.cook - 1));
+          for (const seg of e.segments) seg.render.fillStyle = col;
+          if (e.cook >= 2.15) { EntityRegistry.remove(e); showToast("Fish crumbled. Burnt away.", "Hungry"); }
+        }
+      }
+    }
+    function handleDrag() {
+      if (bell.mode !== "docked") { if (dragConstraint) { Composite.remove(world, dragConstraint); dragConstraint = null; } return; }
+      const m = worldMouse();
+      if (mouse.down && !dragConstraint) {
+        let best = null, bestD = 42;
+        for (const e of EntityRegistry.entities) { if (!e.def || e.alive) continue; const d = Math.hypot(e.head.position.x - m.x, e.head.position.y - m.y); if (d < bestD) { best = e; bestD = d; } }
+        if (best) { draggedFish = best; discovered.add(best.typeKey); dragConstraint = Constraint.create({ bodyA: best.head, pointB: m, stiffness: 0.09, length: 8, render: { visible: false } }); Composite.add(world, dragConstraint); }
+      }
+      if (dragConstraint) { dragConstraint.pointB = worldMouse(); if (!mouse.down) { Composite.remove(world, dragConstraint); dragConstraint = null; draggedFish = null; } }
+    }
+    function nearestDeadFish(pos, radius) {
+      let best = null, bestD = radius;
+      for (const e of EntityRegistry.entities) { if (!e.def || e.alive) continue; const d = Math.hypot(e.head.position.x - pos.x, e.head.position.y - pos.y); if (d < bestD) { best = e; bestD = d; } }
+      return best;
+    }
+    function tryUseNearby() {
+      if (hungryNpc) {
+        const d = Math.hypot(player.torso.position.x - hungryNpc.torso.position.x, player.torso.position.y - hungryNpc.torso.position.y);
+        if (d < 90) {
+          const fish = nearestDeadFish(hungryNpc.torso.position, 70) || nearestDeadFish(player.torso.position, 50);
+          if (!fish) { showToast("Hungry wants a fish next to him.", "Hungry"); return true; }
+          if (!fish.def.edible) { showToast("Hungry will not eat that species.", "Hungry"); return true; }
+          if (fish.cook < 0.7) { showToast("Too raw.", "Hungry"); return true; }
+          if (fish.cook > 1.35) { showToast("Too burnt.", "Hungry"); return true; }
+          const closeness = Math.max(0, 1 - Math.abs(fish.cook - 1) / 0.35);
+          let pay = Math.round((5 + closeness * 24) * (fish.def.value || 1));
+          if (fish.critKill) pay = Math.round(pay * 1.6 + 4);
+          money += pay; EntityRegistry.remove(fish); showToast("Hungry ate it. +" + pay + " cash" + (fish.critKill ? " (crit)" : "") + ".", "Hungry"); return true;
+        }
+      }
+      if (shopNpc && Math.hypot(player.torso.position.x - shopNpc.torso.position.x, player.torso.position.y - shopNpc.torso.position.y) < 80) { openShop(); return true; }
+      return false;
+    }
+    function applyUpgrade(key) {
+      if (upgrades[key] >= UPGRADE_MAX) { showToast("Already maxed.", "Shop"); return; }
+      const cost = UPGRADE_COST[key][upgrades[key]];
+      if (money < cost) { showToast("Need " + cost + " cash.", "Shop"); return; }
+      money -= cost; upgrades[key] += 1;
+      if (key === "oxygen") { maxOxygen = 100 + upgrades.oxygen * 25; oxygen = Math.min(maxOxygen, oxygen + 25); }
+      refreshUpgradeHud(); openShop(); showToast("Bought.", "Shop");
+    }
+    window.buyUpgrade = applyUpgrade;
+    function refreshUpgradeHud() { const el = document.getElementById("upgrade-hud"); if (el) el.textContent = "O2+" + upgrades.oxygen + " SPD+" + upgrades.speed + " DEP+" + upgrades.depth; }
+    function openShop() {
       const panel = document.getElementById("dialogue-panel");
-      document.getElementById("dialogue-speaker").textContent = speaker;
-      document.getElementById("dialogue-text").textContent = Array.isArray(lines) ? lines[0] : lines;
-      document.getElementById("dialogue-choices").innerHTML =
-        '<button class="bg-stone-800 hover:bg-stone-700 text-stone-200 text-sm px-3 py-1 border border-stone-600" onclick="document.getElementById(\'dialogue-panel\').classList.add(\'hidden\')">Close</button>';
+      document.getElementById("dialogue-speaker").textContent = "Shop";
+      document.getElementById("dialogue-text").textContent = "Cash: " + money + ". Upgrades stay for the session.";
+      const row = (key, label) => { const lv = upgrades[key], maxed = lv >= UPGRADE_MAX, cost = maxed ? "-" : UPGRADE_COST[key][lv]; return '<button class="bg-stone-800 text-stone-200 text-sm px-3 py-1 border border-stone-600" onclick="buyUpgrade(\'' + key + '\')">' + label + " " + lv + "/" + UPGRADE_MAX + (maxed ? " MAX" : " (" + cost + ")") + "</button>"; };
+      document.getElementById("dialogue-choices").innerHTML = row("oxygen", "Oxygen") + row("speed", "Hook speed") + row("depth", "Cage depth") + '<button class="bg-stone-800 text-stone-200 text-sm px-3 py-1 border border-stone-600" onclick="document.getElementById(\'dialogue-panel\').classList.add(\'hidden\')">Close</button>';
       panel.classList.remove("hidden");
     }
-
-    function drawBackground() {
-      const ctx = render.context;
-      const bounds = render.bounds;
-      const w = render.options.width;
-      const h = render.options.height;
-      const surfaceScreenY = CONFIG.islandY - bounds.min.y;
-
-      ctx.fillStyle = "#0a0d11";
-      ctx.fillRect(0, 0, w, h);
-
-      if (surfaceScreenY > 0) {
-        const skyH = Math.min(h, surfaceScreenY);
-        const sky = ctx.createLinearGradient(0, 0, 0, skyH);
-        sky.addColorStop(0, "#090b0e");
-        sky.addColorStop(1, "#14181e");
-        ctx.fillStyle = sky;
-        ctx.fillRect(0, 0, w, skyH);
-      }
-
-      if (surfaceScreenY < h) {
-        const y0 = Math.max(0, surfaceScreenY);
-        const grad = ctx.createLinearGradient(0, y0, 0, h);
-        grad.addColorStop(0, "#102028");
-        grad.addColorStop(0.35, "#0a141a");
-        grad.addColorStop(1, "#030508");
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, y0, w, h - y0);
-      }
+    function setPlayerWorldCollide(on) {
+      if (!player) return;
+      const mask = on ? (COL.world | COL.player | COL.bell | COL.gap | COL.floor) : (COL.player | COL.bell | COL.floor);
+      for (const b of player.composite.bodies) b.collisionFilter.mask = mask;
     }
-
-    function drawLabels() {
-      const ctx = render.context;
-      const bounds = render.bounds;
-      const c = bellCenter();
-      ctx.fillStyle = "#b8b0a4";
-      ctx.font = "12px monospace";
-      ctx.textAlign = "center";
-      ctx.fillText(bell.doorOpen ? "BELL DOOR OPEN" : "BELL SEALED", c.x - bounds.min.x, c.y - 96 - bounds.min.y);
-      ctx.fillText("Chef", CONFIG.width / 2 + 230 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
-      ctx.fillText("Shop", CONFIG.width / 2 - 270 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
-    }
-
-    function updateBellStatus() {
-      const el = document.getElementById("bell-status");
-      const door = bell.doorOpen ? "door open" : "door sealed";
-      el.textContent = "Bell: " + bell.mode + " · " + door;
-    }
-
     function handleBellCommand() {
       const near = player && Math.hypot(player.torso.position.x - bellCenter().x, player.torso.position.y - bellCenter().y) < 130;
-      if (!near && !playerInsideBell()) {
-        showToast("Stand in the bell doorway.");
-        return;
-      }
-
+      if (!near && !playerInsideBell()) return;
       if (bell.mode === "docked") {
-        if (bell.doorOpen) {
-          if (!playerInsideBell()) {
-            showToast("Step fully inside before sealing the door.");
-            return;
-          }
-          setDoorOpen(false);
-          showToast("Door sealed. Press E again to descend.");
-        } else {
-          if (!playerInsideBell()) {
-            setDoorOpen(true);
-            showToast("Door opened.");
-            return;
-          }
-          bell.mode = "descending";
-          showToast("Descending. Press E to return to the surface.");
-        }
-        updateBellStatus();
-        return;
+        if (bell.doorOpen) { if (!playerInsideBell()) return; setDoorOpen(false); showToast("Door sealed. Press E again to descend.", "Cage"); }
+        else if (!playerInsideBell()) setDoorOpen(true);
+        else { bell.mode = "descending"; setPlayerWorldCollide(false); anglerThisDive = false; showToast("Descending.", "Cage"); }
+        document.getElementById("bell-status").textContent = "CAGE " + bell.mode + " / " + (bell.doorOpen ? "door open" : "door sealed"); return;
       }
-
-      if (bell.mode === "descending" || bell.mode === "holding") {
-        bell.mode = "ascending";
-        showToast("Ascending.");
-        updateBellStatus();
-      }
+      if (bell.mode === "descending" || bell.mode === "holding") { bell.mode = "ascending"; showToast("Ascending.", "Cage"); document.getElementById("bell-status").textContent = "CAGE " + bell.mode + " / door sealed"; }
     }
-
     function stepBell(dt) {
-      if (!bell.floor) return;
-      let dy = 0;
-      if (bell.mode === "descending") {
-        dy = CONFIG.descendSpeed;
-        if (bell.floor.position.y >= CONFIG.islandY + CONFIG.maxDepth) {
-          dy = 0;
-          bell.mode = "holding";
-        }
-      } else if (bell.mode === "ascending") {
-        dy = -CONFIG.ascendSpeed;
-        const parkY = bell.park.y + 68;
-        if (bell.floor.position.y + dy <= parkY) {
-          dy = parkY - bell.floor.position.y;
-          translateBell(0, dy);
-          if (playerInsideBell()) carryPlayerWithBell(0, dy);
-          arriveSurface();
-          return;
-        }
+      let dx = 0, dy = 0; bell.swayT += dt;
+      if (bell.mode === "descending") { dy = CONFIG.descendSpeed; if (bell.floor.position.y >= CONFIG.islandY + currentMaxDepth()) { dy = 0; bell.mode = "holding"; trySpawnAngler(); } }
+      else if (bell.mode === "ascending") {
+        dy = -CONFIG.ascendSpeed; const parkY = bell.park.y + 68;
+        if (bell.floor.position.y + dy <= parkY) { dy = parkY - bell.floor.position.y; translateBell(0, dy); if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(0, dy); carryBellCargo(0, dy); bell.mode = "docked"; bell.shakeT = 0.85; setDoorOpen(true); setPlayerWorldCollide(true); showToast("Surface. Doors open.", "Cage"); return; }
       }
-
-      if (dy !== 0) {
-        translateBell(0, dy);
-        if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(0, dy);
-      }
+      if (bell.mode !== "docked") {
+        bell.pendV += -bell.pendX * 7 * dt;
+        bell.pendV *= 0.985;
+        bell.pendX += bell.pendV * dt;
+        const targetX = CONFIG.worldX + bell.pendX;
+        dx += targetX - bell.floor.position.x;
+      } else { bell.pendX *= 0.8; bell.pendV *= 0.8; }
+      if (bell.shakeT > 0) { bell.shakeT -= dt; dx += (Math.random() - 0.5) * 1.2; }
+      if (dx || dy) { translateBell(dx, dy); if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(dx, dy); carryBellCargo(dx, dy); }
     }
-
-    function arriveSurface() {
-      bell.mode = "docked";
-      setDoorOpen(true);
-      if (player) {
-        for (const b of player.composite.bodies) Body.setVelocity(b, { x: 1.2, y: -1.5 });
+    function spawnBlood(x, y, vel, crit) { for (let i = 0; i < 8; i++) FX.blood.push({ x, y, vx: (vel.x || 0) * 0.35 + (Math.random() - 0.5) * 2.2, vy: (vel.y || 0) * 0.35 + (Math.random() - 0.5) * 2.2, size: 2 + Math.random() * 3, life: 1, crit: !!crit }); }
+    function updateFx(dt) {
+      const waterTop = CONFIG.waterY, view = render.bounds;
+      if (view.max.y > waterTop + 8) {
+        if (Math.random() < 0.08) { const y = Math.max(waterTop + 24, view.min.y + 10) + Math.random() * Math.max(30, view.max.y - Math.max(waterTop + 24, view.min.y)); if (y > waterTop + 16) FX.bubbles.push({ x: view.min.x + 40 + Math.random() * Math.max(20, view.max.x - view.min.x - 80), y, size: 0, max: 5 + Math.random() * 8, life: 1, vy: -18 - Math.random() * 16 }); }
+        if (Math.random() < 0.12) { const y = Math.max(waterTop + 18, view.min.y) + Math.random() * Math.max(20, view.max.y - Math.max(waterTop + 18, view.min.y)); if (y > waterTop + 10) FX.motes.push({ x: view.min.x + Math.random() * Math.max(20, view.max.x - view.min.x), y, size: 1 + Math.random() * 2, life: 0, grow: 1, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 4 }); }
       }
-      showToast("Surface reached. Door open.");
-      updateBellStatus();
+      for (const b of FX.bubbles) { b.y += b.vy * dt; b.size = Math.min(b.max, b.size + dt * 10); b.life -= dt * 0.25; if (b.y <= waterTop) b.life = 0; } FX.bubbles = FX.bubbles.filter(b => b.life > 0);
+      for (const m of FX.motes) { m.x += m.vx * dt; m.y += m.vy * dt; if (m.y <= waterTop) m.life = 0; if (m.grow) { m.life += dt * 0.35; if (m.life >= 1) m.grow = 0; } else m.life -= dt * 0.18; } FX.motes = FX.motes.filter(m => m.life > 0);
+      for (const p of FX.blood) { p.x += p.vx; p.y += p.vy; p.vx *= 0.94; p.vy *= 0.94; p.size += dt * 6; p.life -= dt * 0.7; } FX.blood = FX.blood.filter(p => p.life > 0);
     }
-
+    function drawBackground() {
+      const ctx = render.context, bounds = render.bounds, w = render.options.width, h = render.options.height, surfaceScreenY = CONFIG.waterY - bounds.min.y;
+      ctx.fillStyle = "#0a0d11"; ctx.fillRect(0, 0, w, h);
+      if (surfaceScreenY > 0) { const sky = ctx.createLinearGradient(0, 0, 0, Math.min(h, surfaceScreenY)); sky.addColorStop(0, "#090b0e"); sky.addColorStop(1, "#14181e"); ctx.fillStyle = sky; ctx.fillRect(0, 0, w, Math.min(h, surfaceScreenY)); }
+      if (surfaceScreenY < h) {
+        const y0 = Math.max(0, surfaceScreenY), depth = Math.max(0, (camera.y || CONFIG.waterY) - CONFIG.waterY), t = Math.min(1, depth / 900), mix = (a, b) => Math.round(a + (b - a) * t);
+        const grad = ctx.createLinearGradient(0, y0, 0, h);
+        grad.addColorStop(0, "rgb(" + mix(22, 6) + "," + mix(58, 16) + "," + mix(62, 22) + ")");
+        grad.addColorStop(0.45, "rgb(" + mix(12, 4) + "," + mix(36, 10) + "," + mix(44, 16) + ")");
+        grad.addColorStop(1, "rgb(" + mix(4, 2) + "," + mix(12, 4) + "," + mix(16, 8) + ")");
+        ctx.fillStyle = grad; ctx.fillRect(0, y0, w, h - y0);
+      }
+      ctx.fillStyle = "rgba(4, 8, 10, 0.55)"; ctx.fillRect(CONFIG.worldX - SHAFT_HALF - bounds.min.x, CONFIG.islandY - 20 - bounds.min.y, SHAFT_HALF * 2, h);
+    }
+    function drawLabels() {
+      const ctx = render.context, bounds = render.bounds, c = bellCenter();
+      if (bell.winch && bell.hook) { ctx.strokeStyle = "#8a8070"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bell.winch.position.x - bounds.min.x, bell.winch.position.y - bounds.min.y); ctx.lineTo(bell.hook.position.x - bounds.min.x, bell.hook.position.y - bounds.min.y); ctx.stroke(); }
+      ctx.fillStyle = "#c8c0a8"; ctx.font = "12px Courier New, monospace"; ctx.textAlign = "center";
+      ctx.fillText(bell.doorOpen ? "DOORS OPEN" : "DOORS SHUT", c.x - bounds.min.x, c.y - 96 - bounds.min.y);
+      ctx.fillText("Hungry", CONFIG.worldX + 250 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
+      ctx.fillText("Grill", CONFIG.worldX + 160 - bounds.min.x, CONFIG.islandY - 18 - bounds.min.y);
+      ctx.fillText("Shop", CONFIG.worldX - 270 - bounds.min.x, CONFIG.islandY - 92 - bounds.min.y);
+      ctx.font = "11px Courier New, monospace";
+      for (const e of EntityRegistry.entities) {
+        if (!e.def || !e.head) continue;
+        const show = discovered.has(e.typeKey) || e === draggedFish;
+        if (!show) continue;
+        ctx.fillStyle = e === draggedFish ? "#efd36a" : "#c8c0a8";
+        ctx.fillText(e.def.name, e.head.position.x - bounds.min.x, e.head.position.y - bounds.min.y + 22);
+      }
+      for (const m of FX.motes) { if (m.y <= CONFIG.waterY) continue; ctx.globalAlpha = Math.max(0, Math.min(1, m.life)) * 0.25; ctx.fillStyle = "#9bb8b0"; ctx.fillRect(m.x - bounds.min.x, m.y - bounds.min.y, m.size, m.size); }
+      for (const b of FX.bubbles) { if (b.y <= CONFIG.waterY) continue; ctx.globalAlpha = Math.max(0, b.life) * 0.45; ctx.strokeStyle = "#b7d4d0"; ctx.strokeRect(b.x - bounds.min.x - b.size / 2, b.y - bounds.min.y - b.size / 2, b.size, b.size); }
+      for (const p of FX.blood) { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.crit ? "#3d8a4a" : "#7a1c1c"; ctx.fillRect(p.x - bounds.min.x - p.size / 2, p.y - bounds.min.y - p.size / 2, p.size, p.size); }
+      ctx.globalAlpha = 1;
+    }
     function init() {
-      engine = Engine.create();
-      world = engine.world;
-      engine.gravity.x = 0;
-      engine.gravity.y = 1.05;
-
-      render = Render.create({
-        canvas: document.getElementById("game-canvas"),
-        engine: engine,
-        options: {
-          width: CONFIG.width,
-          height: CONFIG.height,
-          wireframes: false,
-          background: "#07090d",
-          hasBounds: true,
-          pixelRatio: window.devicePixelRatio || 1
-        }
-      });
-
-      Composite.add(world, createIsland());
-      Composite.add(world, createDivingBell(CONFIG.width / 2, CONFIG.islandY - 36));
-
-      player = createHumanoid(CONFIG.width / 2 - 90, CONFIG.islandY - 80, CONFIG.playerScale, {
-        isPlayer: true, name: "Diver", shirt: "#1c252c"
-      });
-      EntityRegistry.register(player);
-
-      const chef = createNPC(CONFIG.width / 2 + 230, CONFIG.islandY - 42, "Chef",
-        "Bring prepared fish. Wrong species or sloppy prep makes me ill.",
-        { shirt: "#3b2416", pants: "#140e0a" });
-      Body.scale(chef.torso, 1.4, 1.2);
-      EntityRegistry.register(chef);
-
-      EntityRegistry.register(createNPC(CONFIG.width / 2 - 270, CONFIG.islandY - 42, "Shop",
-        "Seal both bell doors before you drop. Do not dive with them open.",
-        { shirt: "#24322a" }));
-
-      const fishSpawns = [
-        { x: CONFIG.width / 2 - 120, y: 620, type: "safe_cod" },
-        { x: CONFIG.width / 2 + 170, y: 800, type: "passive_sole" },
-        { x: CONFIG.width / 2 - 50, y: 980, type: "toxic_puffer" },
-        { x: CONFIG.width / 2 + 90, y: 1140, type: "aggressive_barracuda" },
-        { x: CONFIG.width / 2 - 190, y: 1320, type: "safe_cod" },
-        { x: CONFIG.width / 2 + 30, y: 1520, type: "toxic_puffer" }
-      ];
-      for (const s of fishSpawns) EntityRegistry.register(createSegmentedFish(s.x, s.y, s.type));
-
-      for (let i = 0; i < 10; i++) {
-        Composite.add(world, Bodies.rectangle(
-          90 + Math.random() * (CONFIG.width - 180),
-          520 + Math.random() * 1400,
-          36 + Math.random() * 70,
-          22 + Math.random() * 40,
-          { isStatic: true, render: { fillStyle: "#151a20" } }
-        ));
-      }
-
-      setupCollisions();
-      Events.on(render, "beforeRender", drawBackground);
-      Events.on(render, "afterRender", drawLabels);
-      Runner.run(Runner.create(), engine);
-      Render.run(render);
-      updateBellStatus();
-
-      let last = performance.now();
-      function loop(now) {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
-        update(dt);
-        requestAnimationFrame(loop);
-      }
-      requestAnimationFrame(loop);
-
-      window.addEventListener("resize", () => {
-        CONFIG.width = window.innerWidth;
-        CONFIG.height = window.innerHeight;
-        render.options.width = CONFIG.width;
-        render.options.height = CONFIG.height;
-        render.canvas.width = CONFIG.width;
-        render.canvas.height = CONFIG.height;
-      });
+      engine = Engine.create(); world = engine.world; engine.gravity.x = 0; engine.gravity.y = 1.05;
+      render = Render.create({ canvas: document.getElementById("game-canvas"), engine, options: { width: CONFIG.width, height: CONFIG.height, wireframes: false, background: "#07090d", hasBounds: true, pixelRatio: window.devicePixelRatio || 1 } });
+      Composite.add(world, createIsland()); Composite.add(world, createCrane()); Composite.add(world, createDivingBell(CONFIG.worldX, CONFIG.islandY - 36));
+      player = createHumanoid(CONFIG.worldX - 90, CONFIG.islandY - 20, CONFIG.playerScale, { isPlayer: true, shirt: "#1c252c" }); EntityRegistry.register(player); lastSafeY = player.torso.position.y;
+      hungryNpc = createNPC(CONFIG.worldX + 250, CONFIG.islandY - 6, "Hungry", "", { shirt: "#3b2416", pants: "#140e0a" }); Body.scale(hungryNpc.torso, 1.25, 1.15); EntityRegistry.register(hungryNpc);
+      shopNpc = createNPC(CONFIG.worldX - 270, CONFIG.islandY - 6, "Shop", "", { shirt: "#24322a" }); EntityRegistry.register(shopNpc);
+      grill = Bodies.rectangle(CONFIG.worldX + 160, CONFIG.islandY + 10, 54, 16, { isStatic: true, label: "grill", render: { fillStyle: "#4a2a16" } }); Composite.add(world, grill);
+      function addRocks(side) { const baseX = side < 0 ? CONFIG.worldX - 420 + Math.random() * 80 : CONFIG.worldX + 340 + Math.random() * 80, baseY = 560 + Math.random() * 1200; for (let i = 0; i < 3 + Math.floor(Math.random() * 3); i++) Composite.add(world, Bodies.rectangle(baseX + (Math.random() - 0.5) * 50, baseY + i * 22, 28 + Math.random() * 48, 18 + Math.random() * 28, { isStatic: true, label: "rock", collisionFilter: { category: COL.world, mask: COL.player | COL.fish | COL.hook }, render: { fillStyle: i % 2 ? "#1a2830" : "#152026" } })); }
+      for (let i = 0; i < 5; i++) addRocks(-1); for (let i = 0; i < 5; i++) addRocks(1);
+      setupCollisions(); Events.on(render, "beforeRender", drawBackground); Events.on(render, "afterRender", drawLabels);
+      Runner.run(Runner.create(), engine); Render.run(render);
+      let last = performance.now(); function loop(now) { const dt = Math.min((now - last) / 1000, 0.05); last = now; update(dt); requestAnimationFrame(loop); } requestAnimationFrame(loop);
+      window.addEventListener("resize", () => { CONFIG.width = window.innerWidth; CONFIG.height = window.innerHeight; render.options.width = CONFIG.width; render.options.height = CONFIG.height; render.canvas.width = CONFIG.width; render.canvas.height = CONFIG.height; });
     }
-
     function update(dt) {
       if (!player) return;
-
-      if (keys.KeyE) {
-        keys.KeyE = false;
-        handleBellCommand();
-      }
-
+      if (keys.KeyE) { keys.KeyE = false; if (!tryUseNearby()) handleBellCommand(); }
       stepBell(dt);
-
-      const torso = player.torso;
-      let vx = torso.velocity.x;
-      const left = keys.KeyA || keys.ArrowLeft;
-      const right = keys.KeyD || keys.ArrowRight;
-      if (left && !right) vx = -CONFIG.walkSpeed;
-      else if (right && !left) vx = CONFIG.walkSpeed;
-      else vx *= 0.78;
-
-      let vy = torso.velocity.y;
-      if (vy < -8) vy = -8;
-      if (vy > 16) vy = 16;
-
-      if ((keys.Space) && grounded && !jumpLocked) {
-        vy = -CONFIG.jumpSpeed;
-        jumpLocked = true;
-        grounded = false;
+      const torso = player.torso; let vx = torso.velocity.x, vy = torso.velocity.y;
+      if (keys.KeyA || keys.ArrowLeft) vx = -CONFIG.walkSpeed; else if (keys.KeyD || keys.ArrowRight) vx = CONFIG.walkSpeed; else vx *= 0.78;
+      if (vy < -14) vy = -14; if (vy > 16) vy = 16;
+      if (keys.Space && grounded && !jumpLocked && !player.ragdoll) {
+        const under = player.torso.position.y > CONFIG.waterY;
+        let jump = CONFIG.jumpSpeed * (under ? 1.3 : 0.4);
+        if (bell.mode === "docked" && playerInsideBell()) jump *= 1.5;
+        vy = -jump;
+        for (const b of player.composite.bodies) Body.setVelocity(b, { x: b.velocity.x, y: vy });
+        jumpLocked = true; grounded = false;
       }
-
-      Body.setVelocity(torso, { x: vx, y: vy });
-
-      if (bell.mode !== "docked") {
-        oxygen -= CONFIG.oxygenDrainPerSec * dt;
-        if (oxygen <= 0) {
-          oxygen = 0;
-          bell.mode = "ascending";
-          showToast("Oxygen gone. Bell returning.");
-          updateBellStatus();
-        }
-      } else {
-        oxygen = Math.min(100, oxygen + 18 * dt);
+      if (player.stun > 0) { player.stun -= dt; vx *= 0.2; }
+      if (player.ragdoll) { player.ragdollTimer -= dt; if (player.ragdollTimer <= 0 && (grounded || player.torso.position.y > CONFIG.waterY)) setRagdoll(false); }
+      else { Body.setVelocity(torso, { x: vx, y: vy }); standPose(); }
+      if (player.torso.position.y > CONFIG.waterY) { const g = engine.gravity.y * (engine.gravity.scale || 0.001); for (const b of player.composite.bodies) Body.applyForce(b, b.position, { x: 0, y: -b.mass * g * 0.18 }); }
+      if (grounded) lastSafeY = torso.position.y; else if (torso.position.y - lastSafeY > CONFIG.playerScale * 80 * 5) { if (!player.ragdoll) setRagdoll(true, 3); lastSafeY = torso.position.y; }
+      keepPlayerInBell(); pinLockedAnglers(); updateFishWorld(dt); handleDrag(); maintainFish(dt); updateFx(dt);
+      if (bell.mode !== "docked") { oxygen -= currentDrain() * dt; if (oxygen <= 0) { oxygen = 0; bell.mode = "ascending"; showToast("Oxygen gone. Cage returning.", "Cage"); } } else oxygen = Math.min(maxOxygen, oxygen + 18 * dt);
+      if (mouse.down && bell.mode !== "docked" && !(player.stun > 0)) { shootHarpoon(); mouse.down = false; }
+      if (harpoon && player) {
+        const maxHook = (player.head.position.y - render.bounds.min.y) + 90;
+        if (Math.hypot(harpoon.position.x - player.head.position.x, harpoon.position.y - player.head.position.y) > maxHook) releaseHarpoon();
       }
-
-      if (mouse.down && bell.mode !== "docked") {
-        shootHarpoon();
-        mouse.down = false;
+      if (harpoon) {
+        Body.setAngularVelocity(harpoon, harpoon.angularVelocity * 0.35);
+        if (spearDir && !reelActive) { const hv = harpoon.velocity, mag = Math.hypot(hv.x, hv.y) || 1, mix = 0.45; Body.setVelocity(harpoon, { x: hv.x * (1 - mix) + spearDir.x * mag * mix, y: hv.y * (1 - mix) + spearDir.y * mag * mix }); }
+        const hv2 = harpoon.velocity; if (Math.hypot(hv2.x, hv2.y) > 0.4) Body.setAngle(harpoon, Math.atan2(hv2.y, hv2.x));
       }
-      if (mouse.right && harpoon) reelHarpoon();
+      if (mouse.right && harpoon) reelActive = true;
       if (reelActive && harpoon && harpoonConstraint) {
-        const target = player.rightArm.position;
-        const dir = Vector.sub(target, harpoon.position);
-        if (Vector.magnitude(dir) > 20) {
-          Body.applyForce(harpoon, harpoon.position, Vector.mult(Vector.normalise(dir), CONFIG.reelForce));
+        const target = player.rightArm.position, dir = Vector.sub(target, harpoon.position), dist = Vector.magnitude(dir) || 1, n = Vector.normalise(dir);
+        const pull = Math.min(currentPull(), dist * (0.12 + upgrades.speed * 0.03));
+        Body.setVelocity(harpoon, { x: n.x * pull, y: n.y * pull }); Body.setAngularVelocity(harpoon, 0); harpoonConstraint.length = Math.max(20, dist);
+        for (const fish of hookedFish) {
+          fish.setMask(HAUL_MASK);
+          for (const seg of fish.segments) { seg.ignoreGravity = true; Body.setAngularVelocity(seg, 0); Body.setVelocity(seg, { x: n.x * pull, y: n.y * pull }); }
         }
-        tryCollectFish();
+        if (dist < 40) dropHookedFish();
       }
-
       EntityRegistry.update(dt);
-
-      const head = player.getHeadPos();
-      camera.x = CONFIG.width / 2;
-      camera.y = head.y;
-      Render.lookAt(render, {
-        min: { x: camera.x - CONFIG.width / 2, y: camera.y - CONFIG.height / 2 },
-        max: { x: camera.x + CONFIG.width / 2, y: camera.y + CONFIG.height / 2 }
-      });
-
-      const currentDepth = Math.max(0, Math.round((bell.floor.position.y - (bell.park.y + 68)) / 10));
-      document.getElementById("depth-display").textContent = currentDepth + " m";
-      const ox = document.getElementById("oxygen-display");
-      ox.textContent = Math.round(oxygen) + "%";
-      ox.style.color = oxygen < 30 ? "#c44" : "#9aa";
+      camera.x = CONFIG.worldX; camera.y = player.getHeadPos().y;
+      Render.lookAt(render, { min: { x: camera.x - CONFIG.width / 2, y: camera.y - CONFIG.height / 2 }, max: { x: camera.x + CONFIG.width / 2, y: camera.y + CONFIG.height / 2 } });
+      document.getElementById("depth-display").textContent = Math.max(0, Math.round((bell.floor.position.y - (bell.park.y + 68)) / 10)) + " m";
+      const ox = document.getElementById("oxygen-display"); ox.textContent = Math.round(oxygen) + "/" + maxOxygen; ox.style.color = oxygen < 30 ? "#c44" : "#9aa";
+      document.getElementById("money-display").textContent = String(money); refreshUpgradeHud();
     }
-
     window.addEventListener("load", init);
   </script>
 </body>
