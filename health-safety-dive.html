@@ -72,7 +72,7 @@
         bluefin: { name: "Bluefin Tuna", color: "#2c4a58", shape: "pike", segments: 6, length: 180, height: 28, speed: 0.9, aggression: 0.35, edible: true, value: 2.6, uncommon: true },
         opah: { name: "Opah", color: "#8a3a48", shape: "cod", segments: 4, length: 120, height: 40, speed: 0.45, aggression: 0.1, edible: true, value: 2.2, uncommon: true },
         king_salmon: { name: "King Salmon", color: "#c46a4a", shape: "pike", segments: 6, length: 150, height: 22, speed: 0.7, aggression: 0.2, edible: true, value: 2.4, uncommon: true },
-        deep_angler: { name: "Deep Angler", color: "#2a2418", shape: "angler", segments: 9, length: 260, height: 36, speed: 0.55, aggression: 0.92, edible: true, rare: true, value: 4 }
+        deep_angler: { name: "Deep Angler", color: "#2a2418", shape: "angler", segments: 9, length: 260, height: 36, speed: 0.55, aggression: 0.92, edible: true, rare: true, value: 6 }
       }
     };
     const FISH_KEYS = Object.keys(CONFIG.fishTypes).filter(k => !CONFIG.fishTypes[k].rare);
@@ -89,7 +89,7 @@
     const upgrades = { oxygen: 0, speed: 0, depth: 0 };
     const UPGRADE_MAX = 4;
     const UPGRADE_COST = { oxygen: [8, 14, 22, 32], speed: [8, 16, 24, 34], depth: [10, 18, 28, 40] };
-    let anglerThisDive = false;
+    let anglerThisDive = false, diveCd = 0;
     const bell = { parts: [], floor: null, roof: null, doors: [], hook: null, winch: null, park: { x: 0, y: 0 }, doorOpen: true, mode: "docked", swayT: 0, shakeT: 0, pendX: 0, pendV: 0 };
     const SHAFT_HALF = 78;
     const EntityRegistry = {
@@ -444,22 +444,22 @@
         Body.setVelocity(fish.segments[i], { x: 0, y: 0 }); Body.setAngularVelocity(fish.segments[i], 0); Body.setAngle(fish.segments[i], (t - 0.5) * 0.9);
       }
     }
+    function anglerSpine(fish) { return fish.segments.filter(s => s.label === "fishHead" || s.label === "fishBody"); }
     function layoutAnglerInCage(fish) {
       const c = bellCenter();
-      const spine = fish.segments.filter(s => s.label === "fishHead" || s.label === "fishBody");
+      const spine = anglerSpine(fish);
       const mid = Math.floor(spine.length / 2);
-      const space = 18;
+      const space = 16;
       for (let i = 0; i < spine.length; i++) {
-        Body.setPosition(spine[i], { x: c.x + (i - mid) * space, y: c.y });
+        Body.setPosition(spine[i], { x: c.x + (i - mid) * space, y: c.y + (Math.random() - 0.5) * 6 });
         Body.setAngle(spine[i], 0);
         Body.setVelocity(spine[i], { x: 0, y: 0 });
         Body.setAngularVelocity(spine[i], 0);
+        spine[i].ignoreGravity = i === mid;
       }
-      const extras = fish.segments.filter(s => s.label === "fishJaw" || s.label === "fishTooth" || s.label === "fishWeak");
-      for (const seg of extras) {
-        Body.setPosition(seg, { x: c.x, y: c.y + (seg.label === "fishWeak" ? -16 : 14) });
-        Body.setVelocity(seg, { x: 0, y: 0 });
-      }
+      fish.lockSeg = spine[mid];
+      for (const cns of fish.composite.constraints) cns.stiffness = 0.18;
+      fish.setMask(COL.player | COL.floor);
     }
     function dropHookedFish() {
       hookedFish.slice().forEach((fish, i) => {
@@ -496,18 +496,26 @@
         if (!e.def || !e.cageLocked) continue;
         if (bell.mode === "docked") {
           e.cageLocked = false;
-          for (const seg of e.segments) seg.ignoreGravity = false;
+          for (const seg of e.segments) { seg.ignoreGravity = false; Body.setStatic(seg, false); }
           e.setMask(DEAD_MASK);
           continue;
         }
-        layoutAnglerInCage(e);
+        const c = bellCenter();
+        const pin = e.lockSeg || anglerSpine(e)[Math.floor(anglerSpine(e).length / 2)];
+        if (!pin) continue;
+        Body.setPosition(pin, { x: c.x, y: c.y });
+        Body.setVelocity(pin, { x: 0, y: 0 });
+        Body.setAngularVelocity(pin, 0);
+        Body.setAngle(pin, 0);
       }
     }
     function updateFishWorld(dt) {
       if (!grill) return;
       for (const e of [...EntityRegistry.entities]) {
-        if (!e.def || e.alive) continue; e.setMask(e.attached ? HAUL_MASK : DEAD_MASK);
-        const onGrill = Math.abs(e.head.position.x - grill.position.x) < 40 && Math.abs(e.head.position.y - grill.position.y) < 36;
+        if (!e.def || e.alive) continue;
+        if (e.cageLocked) e.setMask(COL.player | COL.floor);
+        else e.setMask(e.attached ? HAUL_MASK : DEAD_MASK);
+        const onGrill = fishNearPoint(e, grill.position, e.def.rare ? 90 : 44);
         if (onGrill) {
           e.cook += dt * 0.28;
           const col = e.cook <= 1 ? mixHex(e.rawColor, "#c48a32", e.cook) : mixHex("#c48a32", "#0a0a0a", Math.min(1, e.cook - 1));
@@ -521,21 +529,40 @@
       const m = worldMouse();
       if (mouse.down && !dragConstraint) {
         let best = null, bestD = 42;
-        for (const e of EntityRegistry.entities) { if (!e.def || e.alive) continue; const d = Math.hypot(e.head.position.x - m.x, e.head.position.y - m.y); if (d < bestD) { best = e; bestD = d; } }
+        for (const e of EntityRegistry.entities) {
+          if (!e.def || e.alive) continue;
+          for (const seg of e.segments) {
+            const d = Math.hypot(seg.position.x - m.x, seg.position.y - m.y);
+            const lim = e.def.rare ? 70 : bestD;
+            if (d < lim && d < (best ? bestD : lim)) { best = e; bestD = d; }
+          }
+        }
         if (best) { draggedFish = best; discovered.add(best.typeKey); dragConstraint = Constraint.create({ bodyA: best.head, pointB: m, stiffness: 0.09, length: 8, render: { visible: false } }); Composite.add(world, dragConstraint); }
       }
       if (dragConstraint) { dragConstraint.pointB = worldMouse(); if (!mouse.down) { Composite.remove(world, dragConstraint); dragConstraint = null; draggedFish = null; } }
     }
+    function fishNearPoint(e, pos, radius) {
+      for (const seg of e.segments) {
+        if (Math.hypot(seg.position.x - pos.x, seg.position.y - pos.y) < radius) return true;
+      }
+      return false;
+    }
     function nearestDeadFish(pos, radius) {
       let best = null, bestD = radius;
-      for (const e of EntityRegistry.entities) { if (!e.def || e.alive) continue; const d = Math.hypot(e.head.position.x - pos.x, e.head.position.y - pos.y); if (d < bestD) { best = e; bestD = d; } }
+      for (const e of EntityRegistry.entities) {
+        if (!e.def || e.alive) continue;
+        for (const seg of e.segments) {
+          const d = Math.hypot(seg.position.x - pos.x, seg.position.y - pos.y);
+          if (d < bestD) { best = e; bestD = d; }
+        }
+      }
       return best;
     }
     function tryUseNearby() {
       if (hungryNpc) {
         const d = Math.hypot(player.torso.position.x - hungryNpc.torso.position.x, player.torso.position.y - hungryNpc.torso.position.y);
         if (d < 90) {
-          const fish = nearestDeadFish(hungryNpc.torso.position, 70) || nearestDeadFish(player.torso.position, 50);
+          const fish = nearestDeadFish(hungryNpc.torso.position, 120) || nearestDeadFish(player.torso.position, 90);
           if (!fish) { showToast("Hungry wants a fish next to him.", "Hungry"); return true; }
           if (!fish.def.edible) { showToast("Hungry will not eat that species.", "Hungry"); return true; }
           if (fish.cook < 0.7) { showToast("Too raw.", "Hungry"); return true; }
@@ -578,7 +605,10 @@
       if (bell.mode === "docked") {
         if (bell.doorOpen) { if (!playerInsideBell()) return; setDoorOpen(false); showToast("Door sealed. Press E again to descend.", "Cage"); }
         else if (!playerInsideBell()) setDoorOpen(true);
-        else { bell.mode = "descending"; setPlayerWorldCollide(false); anglerThisDive = false; showToast("Descending.", "Cage"); }
+        else {
+          if (diveCd > 0) { showToast("Cage cooling. " + Math.ceil(diveCd) + "s.", "Cage"); return; }
+          bell.mode = "descending"; setPlayerWorldCollide(false); anglerThisDive = false; showToast("Descending.", "Cage");
+        }
         document.getElementById("bell-status").textContent = "CAGE " + bell.mode + " / " + (bell.doorOpen ? "door open" : "door sealed"); return;
       }
       if (bell.mode === "descending" || bell.mode === "holding") { bell.mode = "ascending"; showToast("Ascending.", "Cage"); document.getElementById("bell-status").textContent = "CAGE " + bell.mode + " / door sealed"; }
@@ -588,7 +618,7 @@
       if (bell.mode === "descending") { dy = CONFIG.descendSpeed; if (bell.floor.position.y >= CONFIG.islandY + currentMaxDepth()) { dy = 0; bell.mode = "holding"; trySpawnAngler(); } }
       else if (bell.mode === "ascending") {
         dy = -CONFIG.ascendSpeed; const parkY = bell.park.y + 68;
-        if (bell.floor.position.y + dy <= parkY) { dy = parkY - bell.floor.position.y; translateBell(0, dy); if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(0, dy); carryBellCargo(0, dy); bell.mode = "docked"; bell.shakeT = 0.85; setDoorOpen(true); setPlayerWorldCollide(true); showToast("Surface. Doors open.", "Cage"); return; }
+        if (bell.floor.position.y + dy <= parkY) { dy = parkY - bell.floor.position.y; translateBell(0, dy); if (playerInsideBell() || !bell.doorOpen) carryPlayerWithBell(0, dy); carryBellCargo(0, dy); bell.mode = "docked"; bell.shakeT = 0.85; setDoorOpen(true); setPlayerWorldCollide(true); diveCd = 15; showToast("Surface. Doors open. Cage cools 15s.", "Cage"); return; }
       }
       if (bell.mode !== "docked") {
         bell.pendV += -bell.pendX * 7 * dt;
@@ -682,11 +712,16 @@
       if (player.torso.position.y > CONFIG.waterY) { const g = engine.gravity.y * (engine.gravity.scale || 0.001); for (const b of player.composite.bodies) Body.applyForce(b, b.position, { x: 0, y: -b.mass * g * 0.18 }); }
       if (grounded) lastSafeY = torso.position.y; else if (torso.position.y - lastSafeY > CONFIG.playerScale * 80 * 5) { if (!player.ragdoll) setRagdoll(true, 3); lastSafeY = torso.position.y; }
       keepPlayerInBell(); pinLockedAnglers(); updateFishWorld(dt); handleDrag(); maintainFish(dt); updateFx(dt);
-      if (bell.mode !== "docked") { oxygen -= currentDrain() * dt; if (oxygen <= 0) { oxygen = 0; bell.mode = "ascending"; showToast("Oxygen gone. Cage returning.", "Cage"); } } else oxygen = Math.min(maxOxygen, oxygen + 18 * dt);
+      if (diveCd > 0) diveCd = Math.max(0, diveCd - dt);
+      if (bell.mode !== "docked") {
+        oxygen -= currentDrain() * dt;
+        if (oxygen <= 0) { oxygen = 0; bell.mode = "ascending"; if (!player.ragdoll) setRagdoll(true, 99); player.ragdollTimer = 99; showToast("Oxygen gone. Cage returning.", "Cage"); }
+      } else { oxygen = Math.min(maxOxygen, oxygen + 18 * dt); if (oxygen > 8 && player.ragdollTimer > 10) setRagdoll(false); }
+      if (oxygen <= 0 && bell.mode !== "docked") { setRagdoll(true, 99); player.ragdollTimer = 99; }
       if (mouse.down && bell.mode !== "docked" && !(player.stun > 0)) { shootHarpoon(); mouse.down = false; }
       if (harpoon && player) {
         const maxHook = (player.head.position.y - render.bounds.min.y) + 90;
-        if (Math.hypot(harpoon.position.x - player.head.position.x, harpoon.position.y - player.head.position.y) > maxHook) releaseHarpoon();
+        if (hookedFish.length === 0 && Math.hypot(harpoon.position.x - player.head.position.x, harpoon.position.y - player.head.position.y) > maxHook) releaseHarpoon();
       }
       if (harpoon) {
         Body.setAngularVelocity(harpoon, harpoon.angularVelocity * 0.35);
